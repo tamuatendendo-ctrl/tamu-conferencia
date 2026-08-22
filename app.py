@@ -6,35 +6,74 @@ import re
 from datetime import datetime, date
 
 import requests
-import gspread
 import streamlit as st
 
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
 
-from config import (
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY,
-    SUPABASE_REFRESH_TOKEN
+# ============================================================
+# CONFIGURAÇÃO
+# ============================================================
+
+APP_SCRIPT_URL = (
+    "https://script.google.com/macros/s/"
+    "AKfycbyTDYZhj_w0S3wpKUAPOHMBWgQ8iXxpjjIOVyYTaJ78veFoJOozROVSQOyPSebZ5JI36g/"
+    "exec"
 )
 
-
-# ============================================================
-# CONFIGURAÇÕES
-# ============================================================
-
-ARQUIVO_CREDENCIAL = "google_oauth.json"
-ARQUIVO_TOKEN_GOOGLE = "google_token.json"
 ARQUIVO_TOKEN_SUPABASE = "supabase_token.json"
 
-SPREADSHEET_ID = "1DSrif82ExLPDuloafYUk2F8xXKvf0mAkMSDXqfQ3EOs"
 
-ABA_CHECKINS = "CHECKINS DO DIA"
+# ============================================================
+# CONFIGURAÇÕES DO SUPABASE
+# ============================================================
 
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets.readonly"
-]
+def obter_config_supabase():
+
+    # --------------------------------------------
+    # STREAMLIT CLOUD
+    # --------------------------------------------
+
+    try:
+
+        if "SUPABASE_URL" in st.secrets:
+
+            return (
+                st.secrets["SUPABASE_URL"],
+                st.secrets["SUPABASE_ANON_KEY"],
+                st.secrets["SUPABASE_REFRESH_TOKEN"]
+            )
+
+    except Exception:
+        pass
+
+
+    # --------------------------------------------
+    # LOCAL
+    # --------------------------------------------
+
+    try:
+
+        from config import (
+            SUPABASE_URL,
+            SUPABASE_ANON_KEY,
+            SUPABASE_REFRESH_TOKEN
+        )
+
+        return (
+            SUPABASE_URL,
+            SUPABASE_ANON_KEY,
+            SUPABASE_REFRESH_TOKEN
+        )
+
+    except Exception:
+
+        raise Exception(
+            "As credenciais do Supabase não foram configuradas."
+        )
+
+
+SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_REFRESH_TOKEN = (
+    obter_config_supabase()
+)
 
 
 # ============================================================
@@ -536,76 +575,161 @@ def normalizar_codigo(codigo):
 
 
 # ============================================================
-# GOOGLE
+# GOOGLE SHEETS VIA APPS SCRIPT
 # ============================================================
 
-def autenticar_google():
+def buscar_checkins():
 
-    credentials = None
+    resposta = requests.get(
+        APP_SCRIPT_URL,
+        timeout=30
+    )
 
-    if os.path.exists(
-        ARQUIVO_TOKEN_GOOGLE
-    ):
+    if resposta.status_code != 200:
 
-        credentials = (
-            Credentials
-            .from_authorized_user_file(
-                ARQUIVO_TOKEN_GOOGLE,
-                SCOPES
-            )
+        raise Exception(
+            "Não foi possível consultar "
+            "a aba CHECKINS DO DIA.\n\n"
+            f"HTTP {resposta.status_code}\n"
+            f"{resposta.text}"
         )
 
-    if credentials:
+    try:
 
-        if (
-            credentials.expired
-            and credentials.refresh_token
+        dados = resposta.json()
+
+    except Exception:
+
+        raise Exception(
+            "O Apps Script não retornou "
+            "um JSON válido."
+        )
+
+    if not dados.get("sucesso"):
+
+        raise Exception(
+            "O Apps Script retornou um erro:\n\n"
+            + str(dados)
+        )
+
+    linhas = dados.get(
+        "dados",
+        []
+    )
+
+    checkins = []
+
+    padrao_apartamento = re.compile(
+        r"^\d{6}[A-Z]?$",
+        re.IGNORECASE
+    )
+
+    for numero_linha, linha in enumerate(
+        linhas,
+        start=1
+    ):
+
+        if not isinstance(
+            linha,
+            list
+        ):
+            continue
+
+        for indice_coluna, valor in enumerate(
+            linha
         ):
 
-            credentials.refresh(
-                Request()
+            if valor is None:
+                continue
+
+            valor = str(
+                valor
+            ).strip()
+
+            if not valor:
+                continue
+
+            if not padrao_apartamento.fullmatch(
+                valor
+            ):
+                continue
+
+            codigo_original = valor
+
+            codigo = normalizar_codigo(
+                codigo_original
             )
 
-            with open(
-                ARQUIVO_TOKEN_GOOGLE,
-                "w",
-                encoding="utf-8"
-            ) as arquivo:
+            if not codigo:
+                continue
 
-                arquivo.write(
-                    credentials.to_json()
-                )
+            hospede = ""
 
-    if (
-        not credentials
-        or not credentials.valid
-    ):
+            # Pela estrutura atual da aba:
+            #
+            # apartamento | hóspede | data
+            #
+            # Portanto o hóspede está na
+            # coluna imediatamente seguinte.
 
-        flow = (
-            InstalledAppFlow
-            .from_client_secrets_file(
-                ARQUIVO_CREDENCIAL,
-                SCOPES
-            )
-        )
+            if (
+                indice_coluna + 1
+                < len(linha)
+            ):
 
-        credentials = (
-            flow.run_local_server(
-                port=0
-            )
-        )
+                possivel_hospede = str(
+                    linha[
+                        indice_coluna + 1
+                    ]
+                ).strip()
 
-        with open(
-            ARQUIVO_TOKEN_GOOGLE,
-            "w",
-            encoding="utf-8"
-        ) as arquivo:
+                if possivel_hospede:
 
-            arquivo.write(
-                credentials.to_json()
-            )
+                    # Não considerar data como hóspede
+                    eh_data = False
 
-    return credentials
+                    for formato in (
+                        "%d/%m",
+                        "%d/%m/%Y",
+                        "%d/%m/%y"
+                    ):
+
+                        try:
+
+                            datetime.strptime(
+                                possivel_hospede,
+                                formato
+                            )
+
+                            eh_data = True
+                            break
+
+                        except ValueError:
+
+                            continue
+
+                    if not eh_data:
+
+                        hospede = (
+                            possivel_hospede
+                        )
+
+            checkins.append({
+
+                "codigo_original":
+                    codigo_original,
+
+                "codigo":
+                    codigo,
+
+                "hospede":
+                    hospede,
+
+                "linha":
+                    numero_linha
+            })
+
+    return checkins
 
 
 # ============================================================
@@ -633,25 +757,35 @@ def salvar_token_supabase(
             datetime.now().isoformat()
     }
 
-    with open(
-        ARQUIVO_TOKEN_SUPABASE,
-        "w",
-        encoding="utf-8"
-    ) as arquivo:
+    try:
 
-        json.dump(
-            dados,
-            arquivo,
-            indent=4,
-            ensure_ascii=False
-        )
+        with open(
+            ARQUIVO_TOKEN_SUPABASE,
+            "w",
+            encoding="utf-8"
+        ) as arquivo:
+
+            json.dump(
+                dados,
+                arquivo,
+                indent=4,
+                ensure_ascii=False
+            )
+
+    except Exception:
+        # No Streamlit Cloud o arquivo pode
+        # não ser persistente. Nesse caso
+        # continuamos usando a sessão atual.
+        pass
 
 
 # ============================================================
-# SUPABASE — OBTER REFRESH TOKEN ATUAL
+# SUPABASE — OBTER REFRESH TOKEN
 # ============================================================
 
 def obter_refresh_token_supabase():
+
+    # Primeiro tenta o token salvo localmente.
 
     if os.path.exists(
         ARQUIVO_TOKEN_SUPABASE
@@ -681,6 +815,24 @@ def obter_refresh_token_supabase():
 
         except Exception:
             pass
+
+
+    # No Streamlit Cloud usa Secrets.
+
+    try:
+
+        if (
+            "SUPABASE_REFRESH_TOKEN"
+            in st.secrets
+        ):
+
+            return st.secrets[
+                "SUPABASE_REFRESH_TOKEN"
+            ]
+
+    except Exception:
+        pass
+
 
     return SUPABASE_REFRESH_TOKEN
 
@@ -765,14 +917,40 @@ def renovar_token_supabase():
         expires_in
     )
 
+    # Mantém o token atualizado na sessão
+    # atual do Streamlit.
+
+    st.session_state[
+        "supabase_access_token"
+    ] = access_token
+
+    st.session_state[
+        "supabase_refresh_token"
+    ] = (
+        novo_refresh_token
+        or refresh_token
+    )
+
     return access_token
 
 
 # ============================================================
-# SUPABASE — OBTER ACCESS TOKEN
+# SUPABASE — ACCESS TOKEN
 # ============================================================
 
 def obter_access_token_supabase():
+
+    if (
+        "supabase_access_token"
+        in st.session_state
+    ):
+
+        return st.session_state[
+            "supabase_access_token"
+        ]
+
+
+    # Tenta arquivo local
 
     if os.path.exists(
         ARQUIVO_TOKEN_SUPABASE
@@ -798,10 +976,15 @@ def obter_access_token_supabase():
 
             if access_token:
 
+                st.session_state[
+                    "supabase_access_token"
+                ] = access_token
+
                 return access_token
 
         except Exception:
             pass
+
 
     return renovar_token_supabase()
 
@@ -837,209 +1020,27 @@ def supabase_get(
 
     if resposta.status_code == 401:
 
-        try:
+        access_token = (
+            renovar_token_supabase()
+        )
 
-            erro = resposta.json()
+        headers = {
 
-        except Exception:
+            "apikey":
+                SUPABASE_ANON_KEY,
 
-            erro = {}
+            "Authorization":
+                f"Bearer {access_token}"
+        }
 
-        mensagem = str(
-            erro.get(
-                "message",
-                ""
-            )
-        ).lower()
-
-        if (
-            "jwt" in mensagem
-            or "expired" in mensagem
-            or "token" in mensagem
-        ):
-
-            access_token = (
-                renovar_token_supabase()
-            )
-
-            headers = {
-
-                "apikey":
-                    SUPABASE_ANON_KEY,
-
-                "Authorization":
-                    f"Bearer {access_token}"
-            }
-
-            resposta = requests.get(
-                endpoint,
-                params=params,
-                headers=headers,
-                timeout=30
-            )
+        resposta = requests.get(
+            endpoint,
+            params=params,
+            headers=headers,
+            timeout=30
+        )
 
     return resposta
-
-
-# ============================================================
-# CHECK-INS
-# ============================================================
-
-def buscar_checkins():
-
-    credentials = (
-        autenticar_google()
-    )
-
-    client = gspread.authorize(
-        credentials
-    )
-
-    spreadsheet = (
-        client.open_by_key(
-            SPREADSHEET_ID
-        )
-    )
-
-    worksheet = (
-        spreadsheet.worksheet(
-            ABA_CHECKINS
-        )
-    )
-
-    dados = (
-        worksheet.get_all_values()
-    )
-
-    padrao_apartamento = re.compile(
-        r"^\d{6}[A-Z]?$",
-        re.IGNORECASE
-    )
-
-    checkins = []
-
-    for numero_linha, linha in enumerate(
-        dados,
-        start=1
-    ):
-
-        for indice_coluna, valor in enumerate(
-            linha
-        ):
-
-            if valor is None:
-                continue
-
-            valor = str(
-                valor
-            ).strip()
-
-            if not valor:
-                continue
-
-            if not padrao_apartamento.fullmatch(
-                valor
-            ):
-                continue
-
-            codigo_original = valor
-
-            codigo = normalizar_codigo(
-                codigo_original
-            )
-
-            if not codigo:
-                continue
-
-            hospede = ""
-
-            if (
-                indice_coluna + 1
-                < len(linha)
-            ):
-
-                possivel_hospede = str(
-                    linha[
-                        indice_coluna + 1
-                    ]
-                ).strip()
-
-                if possivel_hospede:
-
-                    eh_data = False
-
-                    for formato in (
-                        "%d/%m",
-                        "%d/%m/%Y",
-                        "%d/%m/%y"
-                    ):
-
-                        try:
-
-                            datetime.strptime(
-                                possivel_hospede,
-                                formato
-                            )
-
-                            eh_data = True
-                            break
-
-                        except ValueError:
-                            continue
-
-                    if not eh_data:
-
-                        hospede = (
-                            possivel_hospede
-                        )
-
-            registro_existente = False
-
-            for registro in checkins:
-
-                if (
-                    registro[
-                        "codigo_original"
-                    ]
-                    == codigo_original
-
-                    and
-
-                    registro[
-                        "hospede"
-                    ]
-                    == hospede
-
-                    and
-
-                    registro[
-                        "linha"
-                    ]
-                    == numero_linha
-                ):
-
-                    registro_existente = True
-                    break
-
-            if registro_existente:
-                continue
-
-            checkins.append({
-
-                "codigo_original":
-                    codigo_original,
-
-                "codigo":
-                    codigo,
-
-                "hospede":
-                    hospede,
-
-                "linha":
-                    numero_linha
-            })
-
-    return checkins
 
 
 # ============================================================
@@ -1441,9 +1442,18 @@ def montar_ultima_limpeza(
 
 def executar_conferencia():
 
+    # --------------------------------------------------------
+    # CHECK-INS
+    # Agora vêm exclusivamente do Apps Script.
+    # --------------------------------------------------------
+
     checkins = (
         buscar_checkins()
     )
+
+    # --------------------------------------------------------
+    # LIMPEZAS
+    # --------------------------------------------------------
 
     limpezas_hoje = (
         buscar_limpezas_hoje()
@@ -1504,6 +1514,10 @@ def executar_conferencia():
                 codigo
             )
 
+    # --------------------------------------------------------
+    # COMPARAÇÃO
+    # --------------------------------------------------------
+
     codigos_checkin = set(
         checkin["codigo"]
         for checkin in checkins
@@ -1534,6 +1548,10 @@ def executar_conferencia():
         -
         codigos_limpeza_hoje
     )
+
+    # --------------------------------------------------------
+    # HISTÓRICO
+    # --------------------------------------------------------
 
     todas_properties = {}
 
@@ -1766,7 +1784,7 @@ else:
 
 
     # ========================================================
-    # INÍCIO DOS 3 CARDS
+    # 3 CARDS
     # ========================================================
 
     html = """
@@ -1931,7 +1949,7 @@ else:
                 </div>
 
                 <div class="status-title">
-                    Check-in + sem limpeza hoje (última limpeza)
+                    Check-in + sem limpeza hoje
                 </div>
 
             </div>
@@ -2021,10 +2039,6 @@ else:
     </div>
     """
 
-
-    # ========================================================
-    # RENDERIZAR
-    # ========================================================
 
     st.html(html)
 

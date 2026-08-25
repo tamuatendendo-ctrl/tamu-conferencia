@@ -439,14 +439,25 @@ div.stButton > button:hover {
 }
 
 .apt-description {
-
-    font-size: 12px;
-
-    color: #64748b;
-
+    font-size: 15px;
+    font-weight: 800;
+    color: #475569;
     white-space: nowrap;
-
     text-align: right;
+}
+
+/* Destaque — cronograma diário */
+.green-card .apt-description {
+    color: #15803d;
+    font-size: 15px;
+    font-weight: 800;
+}
+
+/* Destaque — última limpeza */
+.red-card .apt-description {
+    color: #dc2626;
+    font-size: 15px;
+    font-weight: 800;
 }
 
 .small-icon {

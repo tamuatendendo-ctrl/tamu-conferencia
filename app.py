@@ -591,15 +591,15 @@ def normalizar_codigo(codigo):
 
 def buscar_checkins():
 
-   resposta = requests.get(
+    resposta = requests.get(
         APP_SCRIPT_URL,
         timeout=60,
         allow_redirects=True
     )
 
-        if resposta.status_code != 200:
+    if resposta.status_code != 200:
 
-            raise Exception(
+        raise Exception(
             "Não foi possível consultar "
             "a aba CHECKINS DO DIA.\n\n"
             f"HTTP {resposta.status_code}\n"

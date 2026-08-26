@@ -597,9 +597,9 @@ def buscar_checkins():
         allow_redirects=True
     )
 
-    if resposta.status_code != 200:
+        if resposta.status_code != 200:
 
-        raise Exception(
+            raise Exception(
             "Não foi possível consultar "
             "a aba CHECKINS DO DIA.\n\n"
             f"HTTP {resposta.status_code}\n"

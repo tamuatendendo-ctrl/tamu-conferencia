@@ -592,10 +592,10 @@ def normalizar_codigo(codigo):
 def buscar_checkins():
 
    resposta = requests.get(
-    APP_SCRIPT_URL,
-    timeout=60,
-    allow_redirects=True
-)
+        APP_SCRIPT_URL,
+        timeout=60,
+        allow_redirects=True
+    )
 
     if resposta.status_code != 200:
 

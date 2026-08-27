@@ -1380,309 +1380,141 @@ if iniciar_conferencia:
 
         col1, col2, col3 = st.columns(3)
 
-
         with col1:
-
             st.markdown(
-
-                f"""
-
-                <div class="metric-card">
-
-                    <div class="metric-label">
-                        CHECK-INS DO DIA
-                    </div>
-
-                    <div class="metric-value">
-                        {total_checkins}
-                    </div>
-
-                </div>
-
-                """,
-
-                unsafe_allow_html=True
+                f'<div class="metric-card"><div class="metric-label">CHECK-INS DO DIA</div><div class="metric-value">{total_checkins}</div></div>',
+                unsafe_allow_html=True,
             )
-
 
         with col2:
-
             st.markdown(
-
-                f"""
-
-                <div class="metric-card">
-
-                    <div class="metric-label">
-                        LIBERAÇÕES ENCONTRADAS
-                    </div>
-
-                    <div class="metric-value">
-                        {total_liberacoes}
-                    </div>
-
-                </div>
-
-                """,
-
-                unsafe_allow_html=True
+                f'<div class="metric-card"><div class="metric-label">LIBERAÇÕES ENCONTRADAS</div><div class="metric-value">{total_liberacoes}</div></div>',
+                unsafe_allow_html=True,
             )
-
 
         with col3:
-
             st.markdown(
-
-                f"""
-
-                <div class="metric-card">
-
-                    <div class="metric-label">
-                        PENDÊNCIAS
-                    </div>
-
-                    <div class="metric-value">
-                        {total_pendencias}
-                    </div>
-
-                </div>
-
-                """,
-
-                unsafe_allow_html=True
+                f'<div class="metric-card"><div class="metric-label">PENDÊNCIAS</div><div class="metric-value">{total_pendencias}</div></div>',
+                unsafe_allow_html=True,
             )
-
 
         # ====================================================
         # SUCESSO TOTAL
         # ====================================================
 
         if not checkins_sem_liberacao:
-
             st.markdown(
-
-                """
-
-                <div class="success-box">
-
-                    🟢 TODAS AS LIBERAÇÕES DOS
-                    CHECK-INS DE HOJE ESTÃO CADASTRADAS!
-
-                </div>
-
-                """,
-
-                unsafe_allow_html=True
+                '<div class="success-box">🟢 TODAS AS LIBERAÇÕES DOS CHECK-INS DE HOJE ESTÃO CADASTRADAS!</div>',
+                unsafe_allow_html=True,
             )
-
 
         # ====================================================
         # LISTAS
         # ====================================================
 
-        html = """
-
-        <div class="cards-wrapper">
-
-        """
-
+        html = '<div class="cards-wrapper">'
 
         # ====================================================
         # VERDE
         # ====================================================
 
-        html += """
-
-        <div class="status-card green-card">
-
-            <div class="status-header">
-
-                <div class="status-icon">
-                    ✓
-                </div>
-
-                <div class="status-title">
-
-                    Check-ins com liberação
-
-                </div>
-
-            </div>
-
-        """
-
+        html += (
+            '<div class="status-card green-card">'
+            '<div class="status-header">'
+            '<div class="status-icon">✓</div>'
+            '<div class="status-title">Check-ins com liberação</div>'
+            '</div>'
+        )
 
         if checkins_com_liberacao:
-
             codigos_mostrados = set()
 
             for checkin in sorted(
                 checkins_com_liberacao,
                 key=lambda x: x["codigo"]
             ):
-
                 codigo = checkin["codigo"]
 
                 if codigo in codigos_mostrados:
                     continue
 
-                codigos_mostrados.add(
-                    codigo
-                )
+                codigos_mostrados.add(codigo)
 
                 hospede = (
                     checkin["hospede"]
                     or "Hóspede não identificado"
                 )
 
-                html += f"""
-
-                <div class="apt-row">
-
-                    <div class="apt-left">
-
-                        <div class="small-icon green-small">
-                            ✓
-                        </div>
-
-                        <div class="apt-code">
-                            {checkin["codigo_original"]}
-                        </div>
-
-                    </div>
-
-                    <div class="apt-description">
-
-                        {hospede}
-
-                    </div>
-
-                </div>
-
-                """
-
+                html += (
+                    '<div class="apt-row">'
+                    '<div class="apt-left">'
+                    '<div class="small-icon green-small">✓</div>'
+                    f'<div class="apt-code">{checkin["codigo_original"]}</div>'
+                    '</div>'
+                    f'<div class="apt-description">{hospede}</div>'
+                    '</div>'
+                )
         else:
+            html += (
+                '<div class="empty-card">'
+                'Nenhum check-in com liberação encontrado.'
+                '</div>'
+            )
 
-            html += """
-
-            <div class="empty-card">
-
-                Nenhum check-in com
-                liberação encontrado.
-
-            </div>
-
-            """
-
-
-        html += """
-
-        </div>
-
-        """
-
+        html += '</div>'
 
         # ====================================================
         # VERMELHO
         # ====================================================
 
-        html += """
-
-        <div class="status-card red-card">
-
-            <div class="status-header">
-
-                <div class="status-icon">
-                    !
-                </div>
-
-                <div class="status-title">
-
-                    Check-ins sem liberação
-
-                </div>
-
-            </div>
-
-        """
-
+        html += (
+            '<div class="status-card red-card">'
+            '<div class="status-header">'
+            '<div class="status-icon">!</div>'
+            '<div class="status-title">Check-ins sem liberação</div>'
+            '</div>'
+        )
 
         if checkins_sem_liberacao:
-
             codigos_mostrados = set()
 
             for checkin in sorted(
                 checkins_sem_liberacao,
                 key=lambda x: x["codigo"]
             ):
-
                 codigo = checkin["codigo"]
 
                 if codigo in codigos_mostrados:
                     continue
 
-                codigos_mostrados.add(
-                    codigo
-                )
+                codigos_mostrados.add(codigo)
 
                 hospede = (
                     checkin["hospede"]
                     or "Hóspede não identificado"
                 )
 
-                html += f"""
-
-                <div class="apt-row">
-
-                    <div class="apt-left">
-
-                        <div class="small-icon red-small">
-                            !
-                        </div>
-
-                        <div class="apt-code">
-                            {checkin["codigo_original"]}
-                        </div>
-
-                    </div>
-
-                    <div class="apt-description">
-
-                        {hospede}
-
-                    </div>
-
-                </div>
-
-                """
-
+                html += (
+                    '<div class="apt-row">'
+                    '<div class="apt-left">'
+                    '<div class="small-icon red-small">!</div>'
+                    f'<div class="apt-code">{checkin["codigo_original"]}</div>'
+                    '</div>'
+                    f'<div class="apt-description">{hospede}</div>'
+                    '</div>'
+                )
         else:
+            html += (
+                '<div class="empty-card">'
+                '🟢 Nenhuma pendência encontrada.'
+                '</div>'
+            )
 
-            html += """
-
-            <div class="empty-card">
-
-                🟢 Nenhuma pendência encontrada.
-
-            </div>
-
-            """
-
-
-        html += """
-
-        </div>
-
-        </div>
-
-        """
-
+        html += '</div></div>'
 
         st.markdown(
-
             html,
-
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
 

@@ -1,3 +1,7 @@
+# ============================================================
+# ARQUIVO CORRIGIDO — BOTÃO DE LIBERAÇÕES DENTRO DO HERO
+# ============================================================
+
 # -*- coding: utf-8 -*-
 
 import os
@@ -7,34 +11,26 @@ import textwrap
 from datetime import datetime, date
 
 import requests
-import gspread
 import streamlit as st
 
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
+import streamlit as st
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
 SUPABASE_REFRESH_TOKEN = st.secrets["SUPABASE_REFRESH_TOKEN"]
 
 
-
 # ============================================================
 # CONFIGURAÇÕES
 # ============================================================
 
-ARQUIVO_CREDENCIAL = "google_oauth.json"
-ARQUIVO_TOKEN_GOOGLE = "google_token.json"
+APP_SCRIPT_URL = (
+    "https://script.google.com/macros/s/"
+    "AKfycbyTDYZhj_w0S3wpKUAPOHMBWgQ8iXxpjjIOVyYTaJ78veFoJOozROVSQOyPSebZ5JI36g/"
+    "exec"
+)
+
 ARQUIVO_TOKEN_SUPABASE = "supabase_token.json"
-
-SPREADSHEET_ID = "1DSrif82ExLPDuloafYUk2F8xXKvf0mAkMSDXqfQ3EOs"
-
-ABA_CHECKINS = "CHECKINS DO DIA"
-
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets.readonly"
-]
 
 
 # ============================================================
@@ -139,6 +135,13 @@ header {
     font-size: 17px;
 
     margin-bottom: 24px;
+}
+
+.hero-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
 }
 
 .hero-date {
@@ -523,7 +526,11 @@ div.stButton > button:hover {
 ========================================================== */
 
 .liberacoes-nav-button {
-    display: inline-flex;
+    
+    position: absolute;
+    right: 48px;
+    bottom: 42px;
+display: inline-flex;
     align-items: center;
     justify-content: center;
 
@@ -576,6 +583,7 @@ div.stButton > button:hover {
     }
 
     .liberacoes-nav-button {
+        position: static;
         padding: 11px 14px;
         font-size: 12px;
     }
@@ -615,65 +623,6 @@ def normalizar_codigo(codigo):
 # ============================================================
 # AUTENTICAÇÃO GOOGLE
 # ============================================================
-
-def autenticar_google():
-
-    credentials = None
-
-    if os.path.exists(
-        ARQUIVO_TOKEN_GOOGLE
-    ):
-
-        credentials = (
-            Credentials
-            .from_authorized_user_file(
-                ARQUIVO_TOKEN_GOOGLE,
-                SCOPES
-            )
-        )
-
-    if credentials:
-
-        if (
-            credentials.expired
-            and credentials.refresh_token
-        ):
-
-            credentials.refresh(
-                Request()
-            )
-
-    if (
-        not credentials
-        or not credentials.valid
-    ):
-
-        flow = (
-            InstalledAppFlow
-            .from_client_secrets_file(
-                ARQUIVO_CREDENCIAL,
-                SCOPES
-            )
-        )
-
-        credentials = (
-            flow.run_local_server(
-                port=0
-            )
-        )
-
-        with open(
-            ARQUIVO_TOKEN_GOOGLE,
-            "w",
-            encoding="utf-8"
-        ) as arquivo:
-
-            arquivo.write(
-                credentials.to_json()
-            )
-
-    return credentials
-
 
 # ============================================================
 # TOKEN SUPABASE
@@ -951,28 +900,41 @@ def supabase_get(
 
 def buscar_checkins():
 
-    credentials = (
-        autenticar_google()
+    resposta = requests.get(
+        APP_SCRIPT_URL,
+        timeout=30
     )
 
-    client = gspread.authorize(
-        credentials
-    )
+    if resposta.status_code != 200:
 
-    spreadsheet = (
-        client.open_by_key(
-            SPREADSHEET_ID
+        raise Exception(
+            "Não foi possível consultar "
+            "a aba CHECKINS DO DIA.\n\n"
+            f"HTTP {resposta.status_code}\n"
+            f"{resposta.text}"
         )
-    )
 
-    worksheet = (
-        spreadsheet.worksheet(
-            ABA_CHECKINS
+    try:
+
+        resposta_json = resposta.json()
+
+    except Exception:
+
+        raise Exception(
+            "O Apps Script não retornou "
+            "um JSON válido."
         )
-    )
 
-    dados = (
-        worksheet.get_all_values()
+    if not resposta_json.get("sucesso"):
+
+        raise Exception(
+            "O Apps Script retornou um erro:\n\n"
+            + str(resposta_json)
+        )
+
+    dados = resposta_json.get(
+        "dados",
+        []
     )
 
     padrao_apartamento = re.compile(

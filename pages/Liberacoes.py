@@ -1404,14 +1404,16 @@ with col_voltar:
         )
 
 
-# Botão principal centralizado na página.
-_, col_conferir, _ = st.columns([1, 1.35, 1])
+# Botão principal centralizado visualmente na página.
+# A coluna central recebe largura maior e o botão ocupa toda essa coluna.
+_, col_conferir, _ = st.columns([2, 3, 2])
 
 with col_conferir:
 
     iniciar_conferencia = st.button(
         "🔍 CONFERIR LIBERAÇÕES DO DIA",
-        key="conferir_liberacoes"
+        key="conferir_liberacoes",
+        use_container_width=True
     )
 
 

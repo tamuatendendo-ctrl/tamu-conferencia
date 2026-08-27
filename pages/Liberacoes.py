@@ -7,12 +7,7 @@ import textwrap
 from datetime import datetime, date
 
 import requests
-import gspread
 import streamlit as st
-
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
@@ -23,17 +18,14 @@ SUPABASE_REFRESH_TOKEN = st.secrets["SUPABASE_REFRESH_TOKEN"]
 # CONFIGURAÇÕES
 # ============================================================
 
-ARQUIVO_CREDENCIAL = "google_oauth.json"
-ARQUIVO_TOKEN_GOOGLE = "google_token.json"
 ARQUIVO_TOKEN_SUPABASE = "supabase_token.json"
 
-SPREADSHEET_ID = "1DSrif82ExLPDuloafYUk2F8xXKvf0mAkMSDXqfQ3EOs"
-
-ABA_CHECKINS = "CHECKINS DO DIA"
-
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets.readonly"
-]
+# Consulta dos check-ins pelo mesmo Apps Script já utilizado no app.py.
+APP_SCRIPT_URL = (
+    "https://script.google.com/macros/s/"
+    "AKfycbyTDYZhj_w0S3wpKUAPOHMBWgQ8iXxpjjIOVyYTaJ78veFoJOozROVSQOyPSebZ5JI36g/"
+    "exec"
+)
 
 
 # ============================================================
@@ -588,92 +580,6 @@ def normalizar_codigo(codigo):
 
 
 # ============================================================
-# AUTENTICAÇÃO GOOGLE
-# ============================================================
-
-def autenticar_google():
-
-    credentials = None
-
-    # Streamlit Cloud:
-    # utiliza o token do Google salvo em Secrets.
-    try:
-
-        if "GOOGLE_TOKEN_JSON" in st.secrets:
-
-            dados_token = st.secrets[
-                "GOOGLE_TOKEN_JSON"
-            ]
-
-            if isinstance(
-                dados_token,
-                str
-            ):
-
-                dados_token = json.loads(
-                    dados_token
-                )
-
-            credentials = (
-                Credentials
-                .from_authorized_user_info(
-                    dict(dados_token),
-                    SCOPES
-                )
-            )
-
-    except Exception as erro:
-
-        raise Exception(
-            "Não foi possível carregar "
-            "GOOGLE_TOKEN_JSON do Streamlit Secrets. "
-            f"Detalhes: {erro}"
-        )
-
-    # Ambiente local (VS Code):
-    # mantém o mesmo funcionamento através do arquivo local.
-    if (
-        credentials is None
-        and os.path.exists(
-            ARQUIVO_TOKEN_GOOGLE
-        )
-    ):
-
-        credentials = (
-            Credentials
-            .from_authorized_user_file(
-                ARQUIVO_TOKEN_GOOGLE,
-                SCOPES
-            )
-        )
-
-    if credentials:
-
-        if (
-            credentials.expired
-            and credentials.refresh_token
-        ):
-
-            credentials.refresh(
-                Request()
-            )
-
-    if (
-        not credentials
-        or not credentials.valid
-    ):
-
-        raise Exception(
-            "Credenciais do Google não encontradas. "
-            "No Streamlit Cloud, configure "
-            "GOOGLE_TOKEN_JSON em Secrets. "
-            "Localmente, mantenha o arquivo "
-            "google_token.json."
-        )
-
-    return credentials
-
-# ============================================================
 # TOKEN SUPABASE
 # ============================================================
 
@@ -950,28 +856,41 @@ def supabase_get(
 
 def buscar_checkins():
 
-    credentials = (
-        autenticar_google()
+    resposta = requests.get(
+        APP_SCRIPT_URL,
+        timeout=30
     )
 
-    client = gspread.authorize(
-        credentials
-    )
+    if resposta.status_code != 200:
 
-    spreadsheet = (
-        client.open_by_key(
-            SPREADSHEET_ID
+        raise Exception(
+            "Não foi possível consultar "
+            "a aba CHECKINS DO DIA.\n\n"
+            f"HTTP {resposta.status_code}\n"
+            f"{resposta.text}"
         )
-    )
 
-    worksheet = (
-        spreadsheet.worksheet(
-            ABA_CHECKINS
+    try:
+
+        resposta_json = resposta.json()
+
+    except Exception:
+
+        raise Exception(
+            "O Apps Script não retornou "
+            "um JSON válido."
         )
-    )
 
-    dados = (
-        worksheet.get_all_values()
+    if not resposta_json.get("sucesso"):
+
+        raise Exception(
+            "O Apps Script retornou um erro:\n\n"
+            + str(resposta_json)
+        )
+
+    dados = resposta_json.get(
+        "dados",
+        []
     )
 
     padrao_apartamento = re.compile(

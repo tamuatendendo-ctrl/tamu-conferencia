@@ -14,11 +14,10 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-from config import (
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY,
-    SUPABASE_REFRESH_TOKEN
-)
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
+SUPABASE_REFRESH_TOKEN = st.secrets["SUPABASE_REFRESH_TOKEN"]
+
 
 
 # ============================================================
@@ -520,19 +519,15 @@ div.stButton > button:hover {
 
 
 /* ==========================================================
-   BOTÃO LATERAL — CONFERÊNCIA DE LIBERAÇÕES
+   BOTÃO — CONFERÊNCIA DE LIBERAÇÕES
 ========================================================== */
 
 .liberacoes-nav-button {
-    position: fixed;
-    left: 18px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 999999;
-
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+
+    flex-shrink: 0;
 
     padding: 14px 18px;
 
@@ -559,9 +554,7 @@ div.stButton > button:hover {
 }
 
 .liberacoes-nav-button:hover {
-    transform:
-        translateY(-50%)
-        translateY(-1px);
+    transform: translateY(-1px);
 
     box-shadow:
         0 14px 30px rgba(255, 51, 68, 0.28);
@@ -577,8 +570,12 @@ div.stButton > button:hover {
 }
 
 @media (max-width: 900px) {
+    .hero-bottom {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
     .liberacoes-nav-button {
-        left: 10px;
         padding: 11px 14px;
         font-size: 12px;
     }
@@ -1706,25 +1703,34 @@ hero_html = f"""
         Conferência automática de check-ins × limpezas
     </div>
 
-    <div class="hero-date">
-        📅 {hoje.strftime("%d/%m/%Y")}
+    <div
+        class="hero-bottom"
+        style="
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            width: 100% !important;
+            gap: 24px !important;
+        "
+    >
+
+        <div class="hero-date">
+            📅 {hoje.strftime("%d/%m/%Y")}
+        </div>
+
+        <a
+            href="/Liberacoes"
+            class="liberacoes-nav-button"
+        >
+            🔐 Conferência de Liberações
+        </a>
+
     </div>
 
 </div>
 """
 
 st.html(hero_html)
-
-st.html(
-    """
-    <a
-        href="/Liberacoes"
-        class="liberacoes-nav-button"
-    >
-        🔐 Conferência de Liberações
-    </a>
-    """
-)
 
 
 # ============================================================

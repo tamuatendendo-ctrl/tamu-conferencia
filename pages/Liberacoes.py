@@ -1,20 +1,22 @@
+# -*- coding: utf-8 -*-
+
 import os
 import json
 import re
+import textwrap
 from datetime import datetime, date
 
 import requests
 import gspread
+import streamlit as st
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-from config import (
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY,
-    SUPABASE_REFRESH_TOKEN
-)
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
+SUPABASE_REFRESH_TOKEN = st.secrets["SUPABASE_REFRESH_TOKEN"]
 
 
 # ============================================================
@@ -27,9 +29,537 @@ ARQUIVO_TOKEN_SUPABASE = "supabase_token.json"
 
 SPREADSHEET_ID = "1DSrif82ExLPDuloafYUk2F8xXKvf0mAkMSDXqfQ3EOs"
 
+ABA_CHECKINS = "CHECKINS DO DIA"
+
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets.readonly"
 ]
+
+
+# ============================================================
+# CONFIGURAÇÃO STREAMLIT
+# ============================================================
+
+st.set_page_config(
+    page_title="TAMU — Conferência de Liberações",
+    page_icon="🔐",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+
+# ============================================================
+# CSS
+# ============================================================
+
+CSS = """
+<style>
+
+.stApp {
+    background:
+        radial-gradient(
+            circle at 15% 10%,
+            rgba(99, 102, 241, 0.06),
+            transparent 30%
+        ),
+        radial-gradient(
+            circle at 90% 20%,
+            rgba(239, 68, 68, 0.05),
+            transparent 30%
+        ),
+        #f7f8fc;
+}
+
+.block-container {
+    max-width: 1450px;
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+header {
+    visibility: hidden;
+}
+
+
+/* ==========================================================
+   HERO
+========================================================== */
+
+.hero {
+    position: relative;
+    overflow: hidden;
+
+    background:
+        radial-gradient(
+            circle at 90% 10%,
+            rgba(239, 68, 68, 0.30),
+            transparent 30%
+        ),
+        linear-gradient(
+            110deg,
+            #0b1425 0%,
+            #111827 55%,
+            #351827 100%
+        );
+
+    border-radius: 22px;
+
+    padding: 42px 48px;
+
+    margin-bottom: 24px;
+
+    box-shadow:
+        0 20px 45px rgba(15, 23, 42, 0.16);
+}
+
+.hero-title {
+    color: white;
+
+    font-size: 38px;
+
+    font-weight: 800;
+
+    letter-spacing: -1px;
+
+    margin-bottom: 8px;
+}
+
+.hero-subtitle {
+    color: #cbd5e1;
+
+    font-size: 17px;
+
+    margin-bottom: 24px;
+}
+
+.hero-date {
+    display: inline-flex;
+
+    align-items: center;
+
+    gap: 10px;
+
+    background: rgba(255,255,255,0.09);
+
+    border: 1px solid rgba(255,255,255,0.08);
+
+    color: white;
+
+    border-radius: 12px;
+
+    padding: 10px 16px;
+
+    font-size: 16px;
+
+    font-weight: 700;
+}
+
+
+/* ==========================================================
+   BOTÃO
+========================================================== */
+
+div.stButton > button {
+
+    width: 100%;
+
+    min-height: 55px;
+
+    border: none;
+
+    border-radius: 12px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #ff3344,
+            #ff5964
+        );
+
+    color: white;
+
+    font-size: 16px;
+
+    font-weight: 800;
+
+    letter-spacing: 0.2px;
+
+    box-shadow:
+        0 10px 25px rgba(255, 51, 68, 0.20);
+
+    transition: all 0.2s ease;
+}
+
+div.stButton > button:hover {
+
+    transform: translateY(-1px);
+
+    box-shadow:
+        0 14px 30px rgba(255, 51, 68, 0.28);
+
+    background:
+        linear-gradient(
+            135deg,
+            #f51f31,
+            #ff4c59
+        );
+}
+
+
+/* ==========================================================
+   MÉTRICAS
+========================================================== */
+
+.metric-card {
+
+    background: white;
+
+    border-radius: 18px;
+
+    padding: 22px;
+
+    border: 1px solid #e5e7eb;
+
+    box-shadow:
+        0 8px 25px rgba(15, 23, 42, 0.06);
+
+    text-align: center;
+}
+
+.metric-label {
+
+    color: #64748b;
+
+    font-size: 14px;
+
+    font-weight: 700;
+
+    margin-bottom: 8px;
+}
+
+.metric-value {
+
+    color: #111827;
+
+    font-size: 34px;
+
+    font-weight: 900;
+}
+
+
+/* ==========================================================
+   CARDS
+========================================================== */
+
+.cards-wrapper {
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+
+    gap: 18px;
+
+    margin-top: 24px;
+
+    align-items: start;
+}
+
+.status-card {
+
+    background: white;
+
+    border-radius: 18px;
+
+    overflow: hidden;
+
+    border: 1px solid #e5e7eb;
+
+    box-shadow:
+        0 8px 25px rgba(15, 23, 42, 0.06);
+}
+
+.status-header {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 11px;
+
+    padding: 16px 18px;
+
+    border-bottom: 1px solid #edf0f4;
+}
+
+.status-icon {
+
+    width: 36px;
+
+    height: 36px;
+
+    min-width: 36px;
+
+    border-radius: 50%;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-size: 18px;
+
+    font-weight: 900;
+}
+
+.status-title {
+
+    font-size: 18px;
+
+    font-weight: 800;
+
+    line-height: 1.2;
+}
+
+
+/* ==========================================================
+   VERDE
+========================================================== */
+
+.green-card {
+    border-color: #ccebd7;
+}
+
+.green-card .status-header {
+    background: #f0fdf4;
+}
+
+.green-card .status-icon {
+    background: #22c55e;
+    color: white;
+}
+
+.green-card .status-title {
+    color: #15803d;
+}
+
+
+/* ==========================================================
+   VERMELHO
+========================================================== */
+
+.red-card {
+    border-color: #fecaca;
+}
+
+.red-card .status-header {
+    background: #fff1f2;
+}
+
+.red-card .status-icon {
+    background: #ef4444;
+    color: white;
+}
+
+.red-card .status-title {
+    color: #dc2626;
+}
+
+
+/* ==========================================================
+   APARTAMENTOS
+========================================================== */
+
+.apt-row {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    gap: 12px;
+
+    padding: 13px 16px;
+
+    border-bottom: 1px solid #f0f2f5;
+}
+
+.apt-row:last-child {
+    border-bottom: none;
+}
+
+.apt-left {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 10px;
+
+    min-width: 0;
+}
+
+.apt-code {
+
+    font-size: 16px;
+
+    font-weight: 800;
+
+    color: #111827;
+
+    white-space: nowrap;
+}
+
+.apt-description {
+
+    font-size: 14px;
+
+    color: #64748b;
+
+    text-align: right;
+}
+
+
+/* ==========================================================
+   ÍCONES PEQUENOS
+========================================================== */
+
+.small-icon {
+
+    width: 26px;
+
+    height: 26px;
+
+    min-width: 26px;
+
+    border-radius: 50%;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-size: 13px;
+
+    font-weight: 900;
+}
+
+.green-small {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.red-small {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+
+/* ==========================================================
+   CARD VAZIO
+========================================================== */
+
+.empty-card {
+
+    padding: 35px 20px;
+
+    text-align: center;
+
+    color: #94a3b8;
+
+    font-size: 15px;
+}
+
+
+/* ==========================================================
+   SUCESSO
+========================================================== */
+
+.success-box {
+
+    margin-top: 24px;
+
+    background: #f0fdf4;
+
+    border: 1px solid #bbf7d0;
+
+    border-radius: 16px;
+
+    padding: 24px;
+
+    text-align: center;
+
+    color: #15803d;
+
+    font-size: 20px;
+
+    font-weight: 800;
+}
+
+
+/* ==========================================================
+   FOOTER
+========================================================== */
+
+.footer {
+
+    text-align: center;
+
+    color: #94a3b8;
+
+    font-size: 13px;
+
+    margin-top: 32px;
+
+    padding-bottom: 10px;
+}
+
+
+/* ==========================================================
+   RESPONSIVO
+========================================================== */
+
+@media (max-width: 900px) {
+
+    .cards-wrapper {
+
+        grid-template-columns: 1fr;
+    }
+
+    .hero {
+
+        padding: 30px 25px;
+    }
+
+    .hero-title {
+
+        font-size: 28px;
+    }
+
+    .apt-description {
+
+        white-space: normal;
+    }
+}
+
+</style>
+"""
+
+st.markdown(
+    CSS,
+    unsafe_allow_html=True
+)
 
 
 # ============================================================
@@ -42,18 +572,17 @@ def normalizar_codigo(codigo):
         return ""
 
     codigo = str(codigo).strip().upper()
-    codigo = codigo.replace(" ", "")
 
-    # Exemplos:
-    # 161095
-    # 161095A
-    # 161095B
-    # 161095C
-    #
-    # Todos serão tratados como:
-    # 161095
+    codigo = codigo.replace(
+        " ",
+        ""
+    )
 
-    codigo = re.sub(r"[A-Z]+$", "", codigo)
+    codigo = re.sub(
+        r"[A-Z]+$",
+        "",
+        codigo
+    )
 
     return codigo
 
@@ -66,51 +595,86 @@ def autenticar_google():
 
     credentials = None
 
-    if os.path.exists(ARQUIVO_TOKEN_GOOGLE):
+    # Streamlit Cloud:
+    # utiliza o token do Google salvo em Secrets.
+    try:
 
-        credentials = Credentials.from_authorized_user_file(
-            ARQUIVO_TOKEN_GOOGLE,
-            SCOPES
+        if "GOOGLE_TOKEN_JSON" in st.secrets:
+
+            dados_token = st.secrets[
+                "GOOGLE_TOKEN_JSON"
+            ]
+
+            if isinstance(
+                dados_token,
+                str
+            ):
+
+                dados_token = json.loads(
+                    dados_token
+                )
+
+            credentials = (
+                Credentials
+                .from_authorized_user_info(
+                    dict(dados_token),
+                    SCOPES
+                )
+            )
+
+    except Exception as erro:
+
+        raise Exception(
+            "Não foi possível carregar "
+            "GOOGLE_TOKEN_JSON do Streamlit Secrets. "
+            f"Detalhes: {erro}"
+        )
+
+    # Ambiente local (VS Code):
+    # mantém o mesmo funcionamento através do arquivo local.
+    if (
+        credentials is None
+        and os.path.exists(
+            ARQUIVO_TOKEN_GOOGLE
+        )
+    ):
+
+        credentials = (
+            Credentials
+            .from_authorized_user_file(
+                ARQUIVO_TOKEN_GOOGLE,
+                SCOPES
+            )
         )
 
     if credentials:
 
-        if credentials.expired and credentials.refresh_token:
+        if (
+            credentials.expired
+            and credentials.refresh_token
+        ):
 
-            credentials.refresh(Request())
-
-    if not credentials or not credentials.valid:
-
-        print(
-            "Será necessário autorizar o Google novamente."
-        )
-
-        print()
-
-        flow = InstalledAppFlow.from_client_secrets_file(
-            ARQUIVO_CREDENCIAL,
-            SCOPES
-        )
-
-        credentials = flow.run_local_server(
-            port=0
-        )
-
-        with open(
-            ARQUIVO_TOKEN_GOOGLE,
-            "w",
-            encoding="utf-8"
-        ) as arquivo:
-
-            arquivo.write(
-                credentials.to_json()
+            credentials.refresh(
+                Request()
             )
+
+    if (
+        not credentials
+        or not credentials.valid
+    ):
+
+        raise Exception(
+            "Credenciais do Google não encontradas. "
+            "No Streamlit Cloud, configure "
+            "GOOGLE_TOKEN_JSON em Secrets. "
+            "Localmente, mantenha o arquivo "
+            "google_token.json."
+        )
 
     return credentials
 
-
 # ============================================================
-# SALVAR TOKEN SUPABASE
+# TOKEN SUPABASE
 # ============================================================
 
 def salvar_token_supabase(
@@ -120,10 +684,18 @@ def salvar_token_supabase(
 ):
 
     dados = {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "expires_in": expires_in,
-        "saved_at": datetime.now().isoformat()
+
+        "access_token":
+            access_token,
+
+        "refresh_token":
+            refresh_token,
+
+        "expires_in":
+            expires_in,
+
+        "saved_at":
+            datetime.now().isoformat()
     }
 
     with open(
@@ -140,55 +712,82 @@ def salvar_token_supabase(
         )
 
 
-# ============================================================
-# RENOVAR TOKEN SUPABASE
-# ============================================================
-
 def renovar_token_supabase():
 
-    print(
-        "Renovando sessão do Supabase..."
-    )
-
     url = (
-        f"{SUPABASE_URL}/auth/v1/token"
-        "?grant_type=refresh_token"
+        f"{SUPABASE_URL}"
+        f"/auth/v1/token"
+        f"?grant_type=refresh_token"
     )
 
     headers = {
-        "apikey": SUPABASE_ANON_KEY,
-        "Content-Type": "application/json"
+
+        "apikey":
+            SUPABASE_ANON_KEY,
+
+        "Content-Type":
+            "application/json"
     }
 
+    refresh_token = None
+
+    if os.path.exists(
+        ARQUIVO_TOKEN_SUPABASE
+    ):
+
+        try:
+
+            with open(
+                ARQUIVO_TOKEN_SUPABASE,
+                "r",
+                encoding="utf-8"
+            ) as arquivo:
+
+                dados_token = json.load(
+                    arquivo
+                )
+
+            refresh_token = dados_token.get(
+                "refresh_token"
+            )
+
+        except Exception:
+
+            refresh_token = None
+
+    if not refresh_token:
+
+        refresh_token = (
+            SUPABASE_REFRESH_TOKEN
+        )
+
     payload = {
-        "refresh_token": SUPABASE_REFRESH_TOKEN
+
+        "refresh_token":
+            refresh_token
     }
 
     resposta = requests.post(
+
         url,
+
         headers=headers,
+
         json=payload,
+
         timeout=30
     )
 
     if resposta.status_code != 200:
 
-        print()
-        print(
-            "ERRO AO RENOVAR TOKEN DO SUPABASE"
-        )
-
-        print(
-            f"STATUS HTTP: {resposta.status_code}"
-        )
-
-        print(
-            resposta.text
-        )
-
         raise Exception(
+
             "Não foi possível renovar "
-            "o token do Supabase."
+            "a sessão do Supabase.\n\n"
+
+            f"HTTP {resposta.status_code}\n"
+
+            f"{resposta.text}"
         )
 
     dados = resposta.json()
@@ -197,7 +796,7 @@ def renovar_token_supabase():
         "access_token"
     )
 
-    refresh_token = dados.get(
+    novo_refresh_token = dados.get(
         "refresh_token"
     )
 
@@ -208,28 +807,26 @@ def renovar_token_supabase():
     if not access_token:
 
         raise Exception(
+
             "Supabase não retornou "
             "um access token."
         )
 
+    if not novo_refresh_token:
+
+        novo_refresh_token = refresh_token
+
     salvar_token_supabase(
+
         access_token,
-        refresh_token,
+
+        novo_refresh_token,
+
         expires_in
     )
 
-    print(
-        "Sessão do Supabase renovada com sucesso."
-    )
-
-    print()
-
     return access_token
 
-
-# ============================================================
-# OBTER TOKEN SUPABASE
-# ============================================================
 
 def obter_access_token_supabase():
 
@@ -255,10 +852,6 @@ def obter_access_token_supabase():
 
             if access_token:
 
-                print(
-                    "Usando sessão Supabase salva."
-                )
-
                 return access_token
 
         except Exception:
@@ -269,7 +862,7 @@ def obter_access_token_supabase():
 
 
 # ============================================================
-# REQUISIÇÃO GET SUPABASE
+# SUPABASE GET
 # ============================================================
 
 def supabase_get(
@@ -282,20 +875,24 @@ def supabase_get(
     )
 
     headers = {
-        "apikey": SUPABASE_ANON_KEY,
+
+        "apikey":
+            SUPABASE_ANON_KEY,
+
         "Authorization":
             f"Bearer {access_token}"
     }
 
     resposta = requests.get(
+
         endpoint,
+
         params=params,
+
         headers=headers,
+
         timeout=30
     )
-
-    # Se o token expirou,
-    # renova e tenta novamente.
 
     if resposta.status_code == 401:
 
@@ -316,21 +913,16 @@ def supabase_get(
 
         if (
             "jwt" in mensagem
-            or
-            "expired" in mensagem
-            or
-            "token" in mensagem
+            or "expired" in mensagem
+            or "token" in mensagem
         ):
-
-            print(
-                "Token expirado. Renovando..."
-            )
 
             access_token = (
                 renovar_token_supabase()
             )
 
             headers = {
+
                 "apikey":
                     SUPABASE_ANON_KEY,
 
@@ -339,9 +931,13 @@ def supabase_get(
             }
 
             resposta = requests.get(
+
                 endpoint,
+
                 params=params,
+
                 headers=headers,
+
                 timeout=30
             )
 
@@ -349,74 +945,34 @@ def supabase_get(
 
 
 # ============================================================
-# BUSCAR CHECK-INS NA ABA "CHECKINS DO DIA"
+# BUSCAR CHECK-INS DA PLANILHA
 # ============================================================
 
 def buscar_checkins():
 
-    print("=" * 70)
-    print("1. BUSCANDO CHECK-INS NO GOOGLE SHEETS")
-    print("=" * 70)
-
-    print()
-
-    credentials = autenticar_google()
-
-    print(
-        "Google autenticado com sucesso!"
+    credentials = (
+        autenticar_google()
     )
-
-    print()
 
     client = gspread.authorize(
         credentials
     )
 
-    spreadsheet = client.open_by_key(
-        SPREADSHEET_ID
+    spreadsheet = (
+        client.open_by_key(
+            SPREADSHEET_ID
+        )
     )
 
-    print(
-        f"Planilha encontrada: "
-        f"{spreadsheet.title}"
+    worksheet = (
+        spreadsheet.worksheet(
+            ABA_CHECKINS
+        )
     )
 
-    # ========================================================
-    # ABA CORRETA
-    # ========================================================
-
-    worksheet = spreadsheet.worksheet(
-        "CHECKINS DO DIA"
+    dados = (
+        worksheet.get_all_values()
     )
-
-    print(
-        f"Aba encontrada: "
-        f"{worksheet.title}"
-    )
-
-    print()
-
-    dados = worksheet.get_all_values()
-
-    print(
-        f"Linhas encontradas: "
-        f"{len(dados)}"
-    )
-
-    print()
-
-    # ========================================================
-    # A ABA "CHECKINS DO DIA" NÃO POSSUI UM CABEÇALHO
-    # PADRÃO.
-    #
-    # Ela possui os apartamentos organizados em blocos,
-    # como:
-    #
-    # 161117 | Maria Eduarda Silva | 22/08
-    # 161095C | Viktoriia | 22/08/2026
-    #
-    # Portanto procuramos diretamente códigos de apartamento.
-    # ========================================================
 
     padrao_apartamento = re.compile(
         r"^\d{6}[A-Z]?$",
@@ -437,14 +993,12 @@ def buscar_checkins():
             if valor is None:
                 continue
 
-            valor = str(valor).strip()
+            valor = str(
+                valor
+            ).strip()
 
             if not valor:
                 continue
-
-            # ------------------------------------------------
-            # Verifica se a célula é um código de apartamento
-            # ------------------------------------------------
 
             if not padrao_apartamento.fullmatch(
                 valor
@@ -460,16 +1014,11 @@ def buscar_checkins():
             if not codigo:
                 continue
 
-            # ------------------------------------------------
-            # Nome do hóspede fica imediatamente à direita
-            # ------------------------------------------------
-
             hospede = ""
 
             if (
                 indice_coluna + 1
-                <
-                len(linha)
+                < len(linha)
             ):
 
                 possivel_hospede = str(
@@ -482,13 +1031,15 @@ def buscar_checkins():
 
                     eh_data = False
 
-                    formatos_data = [
-                        "%d/%m",
-                        "%d/%m/%Y",
-                        "%d/%m/%y"
-                    ]
+                    for formato in (
 
-                    for formato in formatos_data:
+                        "%d/%m",
+
+                        "%d/%m/%Y",
+
+                        "%d/%m/%y"
+
+                    ):
 
                         try:
 
@@ -498,6 +1049,7 @@ def buscar_checkins():
                             )
 
                             eh_data = True
+
                             break
 
                         except ValueError:
@@ -510,385 +1062,104 @@ def buscar_checkins():
                             possivel_hospede
                         )
 
-            # ------------------------------------------------
-            # Evita duplicação do mesmo registro
-            # ------------------------------------------------
-
             registro_existente = False
 
             for registro in checkins:
 
                 if (
-                    registro["codigo_original"]
-                    ==
-                    codigo_original
+
+                    registro[
+                        "codigo_original"
+                    ]
+                    == codigo_original
+
                     and
-                    registro["hospede"]
-                    ==
-                    hospede
+
+                    registro[
+                        "hospede"
+                    ]
+                    == hospede
+
                     and
-                    registro["linha"]
-                    ==
-                    numero_linha
+
+                    registro[
+                        "linha"
+                    ]
+                    == numero_linha
+
                 ):
 
                     registro_existente = True
+
                     break
 
             if registro_existente:
                 continue
 
-            checkins.append(
-                {
-                    "codigo_original":
-                        codigo_original,
+            checkins.append({
 
-                    "codigo":
-                        codigo,
+                "codigo_original":
+                    codigo_original,
 
-                    "hospede":
-                        hospede,
+                "codigo":
+                    codigo,
 
-                    "linha":
-                        numero_linha
-                }
-            )
+                "hospede":
+                    hospede,
 
-    # ========================================================
-    # RESULTADO
-    # ========================================================
-
-    print(
-        f"Check-ins encontrados: "
-        f"{len(checkins)}"
-    )
-
-    print()
-
-    for checkin in checkins:
-
-        print(
-            f"  {checkin['codigo_original']} | "
-            f"{checkin['hospede']}"
-        )
-
-    print()
+                "linha":
+                    numero_linha
+            })
 
     return checkins
 
 
 # ============================================================
-# BUSCAR LIMPEZAS DE HOJE
+# BUSCAR LIBERAÇÕES NO SUPABASE
 # ============================================================
 
-def buscar_limpezas_hoje():
+def buscar_liberacoes_hoje():
 
     hoje = date.today().strftime(
         "%Y-%m-%d"
     )
 
-    print("=" * 70)
-    print(
-        "2. BUSCANDO LIMPEZAS DE HOJE NO SUPABASE"
-    )
-    print("=" * 70)
-
-    print()
-
     endpoint = (
-        f"{SUPABASE_URL}/rest/v1/"
-        f"cleaning_schedules"
+        f"{SUPABASE_URL}"
+        f"/rest/v1/"
+        f"reservations"
     )
 
     parametros = {
 
-        "select": (
-            "id,"
-            "reservation_id,"
-            "property_id,"
-            "priority,"
-            "assigned_extra_id,"
-            "assigned_equipe_id,"
-            "status,"
-            "scheduled_date,"
-            "completed_at,"
-            "cancelled_at"
-        ),
-
-        "scheduled_date":
-            f"eq.{hoje}",
+        "select":
+            (
+                "id,"
+                "checkin_date,"
+                "checkin_time,"
+                "checkout_date,"
+                "checkout_time,"
+                "status,"
+                "properties("
+                    "id,"
+                    "code"
+                "),"
+                "reservation_tenants("
+                    "is_primary,"
+                    "tenants("
+                        "full_name"
+                    ")"
+                ")"
+            ),
 
         "status":
             "eq.active",
 
-        "order":
-            "priority.asc"
-    }
-
-    resposta = supabase_get(
-        endpoint,
-        parametros
-    )
-
-    print(
-        f"STATUS HTTP: "
-        f"{resposta.status_code}"
-    )
-
-    if resposta.status_code != 200:
-
-        print(
-            resposta.text
-        )
-
-        raise Exception(
-            "Falha ao consultar "
-            "cleaning_schedules."
-        )
-
-    limpezas = resposta.json()
-
-    print(
-        f"Limpezas encontradas: "
-        f"{len(limpezas)}"
-    )
-
-    print()
-
-    return limpezas
-
-
-# ============================================================
-# BUSCAR PROPERTIES
-# ============================================================
-
-def buscar_properties(
-    property_ids
-):
-
-    if not property_ids:
-
-        return {}
-
-    lista_ids = ",".join(
-        property_ids
-    )
-
-    endpoint = (
-        f"{SUPABASE_URL}/rest/v1/"
-        f"properties"
-    )
-
-    parametros = {
-
-        "select": (
-            "id,"
-            "code,"
-            "street,"
-            "number,"
-            "complement"
-        ),
-
-        "id":
-            f"in.({lista_ids})"
-    }
-
-    resposta = supabase_get(
-        endpoint,
-        parametros
-    )
-
-    print(
-        f"STATUS HTTP: "
-        f"{resposta.status_code}"
-    )
-
-    if resposta.status_code != 200:
-
-        print(
-            resposta.text
-        )
-
-        raise Exception(
-            "Falha ao consultar "
-            "properties."
-        )
-
-    properties = resposta.json()
-
-    mapa = {}
-
-    for property_data in properties:
-
-        property_id = (
-            property_data.get("id")
-        )
-
-        codigo_original = str(
-            property_data.get(
-                "code",
-                ""
-            )
-        ).strip()
-
-        codigo = normalizar_codigo(
-            codigo_original
-        )
-
-        mapa[property_id] = {
-
-            "codigo_original":
-                codigo_original,
-
-            "codigo":
-                codigo,
-
-            "endereco": (
-                f"{property_data.get('street', '')}, "
-                f"{property_data.get('number', '')} "
-                f"{property_data.get('complement', '')}"
-            ).strip()
-        }
-
-    return mapa
-
-
-# ============================================================
-# BUSCAR TODAS AS PROPERTIES
-# ============================================================
-
-def buscar_todas_properties():
-
-    print("=" * 70)
-    print(
-        "3. LOCALIZANDO UNIDADES PARA "
-        "CONSULTA DO HISTÓRICO"
-    )
-    print("=" * 70)
-
-    print()
-
-    endpoint = (
-        f"{SUPABASE_URL}/rest/v1/"
-        f"properties"
-    )
-
-    parametros = {
-        "select": (
-            "id,"
-            "code,"
-            "street,"
-            "number,"
-            "complement"
-        )
-    }
-
-    resposta = supabase_get(
-        endpoint,
-        parametros
-    )
-
-    print(
-        f"STATUS HTTP: "
-        f"{resposta.status_code}"
-    )
-
-    if resposta.status_code != 200:
-
-        print(
-            resposta.text
-        )
-
-        raise Exception(
-            "Falha ao consultar "
-            "properties."
-        )
-
-    properties = resposta.json()
-
-    mapa = {}
-
-    for property_data in properties:
-
-        codigo_original = str(
-            property_data.get(
-                "code",
-                ""
-            )
-        ).strip()
-
-        codigo = normalizar_codigo(
-            codigo_original
-        )
-
-        if not codigo:
-            continue
-
-        mapa[
-            property_data["id"]
-        ] = {
-
-            "codigo_original":
-                codigo_original,
-
-            "codigo":
-                codigo,
-
-            "endereco": (
-                f"{property_data.get('street', '')}, "
-                f"{property_data.get('number', '')} "
-                f"{property_data.get('complement', '')}"
-            ).strip()
-        }
-
-    print(
-        f"Properties encontradas: "
-        f"{len(mapa)}"
-    )
-
-    print()
-
-    return mapa
-
-
-# ============================================================
-# BUSCAR HISTÓRICO DE LIMPEZAS
-# ============================================================
-
-def buscar_historico_limpezas(
-    property_ids
-):
-
-    if not property_ids:
-
-        return []
-
-    lista_ids = ",".join(
-        property_ids
-    )
-
-    endpoint = (
-        f"{SUPABASE_URL}/rest/v1/"
-        f"cleaning_schedules"
-    )
-
-    parametros = {
-
-        "select": (
-            "id,"
-            "property_id,"
-            "status,"
-            "scheduled_date,"
-            "completed_at,"
-            "cancelled_at,"
-            "started_at"
-        ),
-
-        "property_id":
-            f"in.({lista_ids})",
+        "checkin_date":
+            f"eq.{hoje}",
 
         "order":
-            "scheduled_date.desc"
+            "checkin_time.asc"
     }
 
     resposta = supabase_get(
@@ -896,678 +1167,608 @@ def buscar_historico_limpezas(
         parametros
     )
 
-    print(
-        f"STATUS HTTP: "
-        f"{resposta.status_code}"
-    )
-
     if resposta.status_code != 200:
 
-        print(
-            resposta.text
-        )
-
         raise Exception(
+
             "Falha ao consultar "
-            "histórico de limpezas."
+            "as liberações.\n\n"
+
+            f"HTTP {resposta.status_code}\n"
+
+            f"{resposta.text}"
         )
 
-    historico = resposta.json()
-
-    print(
-        f"Registros históricos encontrados: "
-        f"{len(historico)}"
-    )
-
-    print()
-
-    return historico
+    return resposta.json()
 
 
 # ============================================================
-# EXTRAIR DATA DA LIMPEZA
+# EXTRAIR DADOS DA LIBERAÇÃO
 # ============================================================
 
-def extrair_data_limpeza(
-    registro
+def extrair_dados_liberacao(
+    reserva
 ):
 
-    completed_at = (
-        registro.get(
-            "completed_at"
-        )
+    properties = reserva.get(
+        "properties"
     )
 
-    scheduled_date = (
-        registro.get(
-            "scheduled_date"
+    if isinstance(
+        properties,
+        list
+    ):
+
+        if properties:
+            properties = properties[0]
+
+        else:
+            properties = {}
+
+    if not isinstance(
+        properties,
+        dict
+    ):
+
+        properties = {}
+
+    codigo_original = str(
+        properties.get(
+            "code",
+            ""
         )
+    ).strip()
+
+    codigo = normalizar_codigo(
+        codigo_original
     )
 
-    started_at = (
-        registro.get(
-            "started_at"
-        )
+    hospede = ""
+
+    reservation_tenants = reserva.get(
+        "reservation_tenants",
+        []
     )
 
-    # Primeiro tenta completed_at
+    if isinstance(
+        reservation_tenants,
+        list
+    ):
 
-    if completed_at:
+        principal = None
 
-        try:
+        for item in reservation_tenants:
 
-            return datetime.fromisoformat(
-                completed_at.replace(
-                    "Z",
-                    "+00:00"
-                )
-            ).date()
+            if item.get(
+                "is_primary"
+            ):
 
-        except Exception:
+                principal = item
 
-            pass
+                break
 
-    # Depois tenta started_at
+        if principal is None:
 
-    if started_at and scheduled_date:
+            if reservation_tenants:
+                principal = reservation_tenants[0]
 
-        try:
+        if principal:
 
-            return datetime.strptime(
-                scheduled_date,
-                "%Y-%m-%d"
-            ).date()
-
-        except Exception:
-
-            pass
-
-    # Finalmente scheduled_date
-
-    if scheduled_date:
-
-        try:
-
-            return datetime.strptime(
-                scheduled_date,
-                "%Y-%m-%d"
-            ).date()
-
-        except Exception:
-
-            pass
-
-    return None
-
-
-# ============================================================
-# MAPEAR ÚLTIMA LIMPEZA POR UNIDADE
-# ============================================================
-
-def montar_ultima_limpeza(
-    historico,
-    properties
-):
-
-    ultima_limpeza = {}
-
-    hoje = date.today()
-
-    for registro in historico:
-
-        # Limpeza cancelada não conta.
-
-        if registro.get(
-            "cancelled_at"
-        ):
-
-            continue
-
-        property_id = (
-            registro.get(
-                "property_id"
-            )
-        )
-
-        property_data = (
-            properties.get(
-                property_id
-            )
-        )
-
-        if not property_data:
-            continue
-
-        codigo = (
-            property_data["codigo"]
-        )
-
-        if not codigo:
-            continue
-
-        data_limpeza = (
-            extrair_data_limpeza(
-                registro
-            )
-        )
-
-        if data_limpeza is None:
-            continue
-
-        if data_limpeza > hoje:
-            continue
-
-        if (
-            codigo not in ultima_limpeza
-            or
-            data_limpeza >
-            ultima_limpeza[codigo]
-        ):
-
-            ultima_limpeza[codigo] = (
-                data_limpeza
+            tenant = principal.get(
+                "tenants",
+                {}
             )
 
-    return ultima_limpeza
+            if isinstance(
+                tenant,
+                list
+            ):
+
+                if tenant:
+                    tenant = tenant[0]
+
+                else:
+                    tenant = {}
+
+            if isinstance(
+                tenant,
+                dict
+            ):
+
+                hospede = str(
+                    tenant.get(
+                        "full_name",
+                        ""
+                    )
+                ).strip()
+
+    return {
+
+        "codigo_original":
+            codigo_original,
+
+        "codigo":
+            codigo,
+
+        "hospede":
+            hospede,
+
+        "checkin_time":
+            reserva.get(
+                "checkin_time",
+                ""
+            )
+    }
 
 
 # ============================================================
 # CONFERÊNCIA
 # ============================================================
 
-def realizar_conferencia(
-    checkins,
-    limpezas_hoje,
-    properties_hoje,
-    todas_properties,
-    ultima_limpeza
-):
+def conferir_liberacoes():
 
-    # --------------------------------------------------------
-    # MAPA DAS LIMPEZAS DE HOJE
-    # --------------------------------------------------------
+    checkins = buscar_checkins()
 
-    codigos_limpeza_hoje = set()
+    reservas = buscar_liberacoes_hoje()
 
-    for limpeza in limpezas_hoje:
+    liberacoes = []
 
-        property_id = (
-            limpeza.get(
-                "property_id"
-            )
+    for reserva in reservas:
+
+        dados = extrair_dados_liberacao(
+            reserva
         )
 
-        property_data = (
-            properties_hoje.get(
-                property_id
-            )
-        )
+        if dados["codigo"]:
 
-        if not property_data:
-            continue
-
-        codigo = (
-            property_data["codigo"]
-        )
-
-        if codigo:
-
-            codigos_limpeza_hoje.add(
-                codigo
+            liberacoes.append(
+                dados
             )
 
-    # --------------------------------------------------------
-    # MAPA DOS CHECK-INS
-    # --------------------------------------------------------
+    codigos_liberacoes = set(
 
-    codigos_checkin = set(
-        checkin["codigo"]
-        for checkin in checkins
+        liberacao["codigo"]
+
+        for liberacao in liberacoes
+
+        if liberacao["codigo"]
     )
 
-    # --------------------------------------------------------
-    # GRUPO 1:
-    # CHECK-IN + LIMPEZA
-    # --------------------------------------------------------
+    checkins_com_liberacao = []
 
-    checkins_com_limpeza = [
-        checkin
-        for checkin in checkins
-        if checkin["codigo"]
-        in codigos_limpeza_hoje
-    ]
+    checkins_sem_liberacao = []
 
-    # --------------------------------------------------------
-    # GRUPO 2:
-    # LIMPEZA + SEM CHECK-IN
-    # --------------------------------------------------------
+    for checkin in checkins:
 
-    limpezas_sem_checkin = (
-        codigos_limpeza_hoje
-        -
-        codigos_checkin
-    )
-
-    # --------------------------------------------------------
-    # GRUPO 3:
-    # CHECK-IN + SEM LIMPEZA
-    # --------------------------------------------------------
-
-    checkins_sem_limpeza = [
-        checkin
-        for checkin in checkins
-        if checkin["codigo"]
-        not in codigos_limpeza_hoje
-    ]
-
-    # ========================================================
-    # RELATÓRIO
-    # ========================================================
-
-    hoje_formatado = date.today().strftime(
-        "%d/%m/%Y"
-    )
-
-    print()
-    print("=" * 70)
-    print(
-        f"      CONFERÊNCIA — {hoje_formatado}"
-    )
-    print("=" * 70)
-    print()
-
-    # ========================================================
-    # RESUMO
-    # ========================================================
-
-    apartamentos_checkin = set(
-        checkin["codigo"]
-        for checkin in checkins
-    )
-
-    print("RESUMO")
-    print("-" * 70)
-
-    print(
-        f"Reservas/check-ins: "
-        f"{len(checkins)}"
-    )
-
-    print(
-        f"Apartamentos com check-in: "
-        f"{len(apartamentos_checkin)}"
-    )
-
-    print(
-        f"Apartamentos com limpeza hoje: "
-        f"{len(codigos_limpeza_hoje)}"
-    )
-
-    print(
-        f"Check-ins + limpeza: "
-        f"{len(set(c['codigo'] for c in checkins_com_limpeza))}"
-    )
-
-    print(
-        f"Check-ins sem limpeza: "
-        f"{len(set(c['codigo'] for c in checkins_sem_limpeza))}"
-    )
-
-    print(
-        f"Limpezas sem check-in: "
-        f"{len(limpezas_sem_checkin)}"
-    )
-
-    print()
-
-    # ========================================================
-    # 1 — CHECK-IN + LIMPEZA
-    # ========================================================
-
-    print("=" * 70)
-    print("1. 🟢 CHECK-IN + LIMPEZA HOJE")
-    print("=" * 70)
-
-    if checkins_com_limpeza:
-
-        apartamentos_mostrados = set()
-
-        for checkin in checkins_com_limpeza:
-
-            codigo = checkin["codigo"]
-
-            if codigo in apartamentos_mostrados:
-                continue
-
-            apartamentos_mostrados.add(
-                codigo
-            )
-
-            print(
-                f"  OK | "
-                f"{checkin['codigo_original']} | "
-                f"{checkin['hospede']}"
-            )
-
-            print(
-                "       Cronograma de limpeza: SIM"
-            )
-
-    else:
-
-        print(
-            "  Nenhum apartamento."
-        )
-
-    print()
-
-    # ========================================================
-    # 2 — LIMPEZA + SEM CHECK-IN
-    # ========================================================
-
-    print("=" * 70)
-    print("2. 🔵 LIMPEZA HOJE + SEM CHECK-IN")
-    print("=" * 70)
-
-    if limpezas_sem_checkin:
-
-        for codigo in sorted(
-            limpezas_sem_checkin
+        if (
+            checkin["codigo"]
+            in codigos_liberacoes
         ):
 
-            print(
-                f"  OK | {codigo}"
+            checkins_com_liberacao.append(
+                checkin
             )
 
-    else:
+        else:
 
-        print(
-            "  Nenhuma."
-        )
+            checkins_sem_liberacao.append(
+                checkin
+            )
 
-    print()
+    return (
 
-    # ========================================================
-    # 3 — CHECK-IN + SEM LIMPEZA
-    # ========================================================
+        checkins,
 
-    print("=" * 70)
-    print(
-        "3. 🟡 CHECK-IN + SEM LIMPEZA HOJE"
+        liberacoes,
+
+        checkins_com_liberacao,
+
+        checkins_sem_liberacao
     )
-    print("=" * 70)
-
-    if checkins_sem_limpeza:
-
-        apartamentos_mostrados = set()
-
-        for checkin in checkins_sem_limpeza:
-
-            codigo = checkin["codigo"]
-
-            if codigo in apartamentos_mostrados:
-                continue
-
-            apartamentos_mostrados.add(
-                codigo
-            )
-
-            print()
-
-            print(
-                f"  ⚠️ APARTAMENTO: "
-                f"{checkin['codigo_original']}"
-            )
-
-            print(
-                f"     Hóspede: "
-                f"{checkin['hospede']}"
-            )
-
-            print(
-                "     Check-in: HOJE"
-            )
-
-            print(
-                "     Limpeza hoje: NÃO"
-            )
-
-            print(
-                "     Cronograma de limpeza hoje: NÃO"
-            )
-
-            ultima = (
-                ultima_limpeza.get(
-                    codigo
-                )
-            )
-
-            if ultima:
-
-                print(
-                    "     Última limpeza: "
-                    f"{ultima.strftime('%d/%m/%Y')}"
-                )
-
-            else:
-
-                print(
-                    "     Última limpeza: "
-                    "NUNCA ENCONTRADA"
-                )
-
-    else:
-
-        print(
-            "  Nenhum apartamento."
-        )
-
-    print()
-
-    # ========================================================
-    # FINAL
-    # ========================================================
-
-    print("=" * 70)
-    print("CONFERÊNCIA FINALIZADA")
-    print("=" * 70)
-    print()
-
-    return {
-        "checkins_com_limpeza":
-            checkins_com_limpeza,
-
-        "limpezas_sem_checkin":
-            limpezas_sem_checkin,
-
-        "checkins_sem_limpeza":
-            checkins_sem_limpeza
-    }
 
 
 # ============================================================
-# EXECUÇÃO PRINCIPAL
+# HERO
 # ============================================================
 
-if __name__ == "__main__":
+hoje_formatado = date.today().strftime(
+    "%d/%m/%Y"
+)
+
+st.markdown(
+    f'<div class="hero">'
+    f'<div class="hero-title">🔐 Conferência de Liberações</div>'
+    f'<div class="hero-subtitle">Verifique automaticamente se todos os check-ins do dia possuem liberação cadastrada.</div>'
+    f'<div class="hero-date">📅 {hoje_formatado}</div>'
+    f'</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# BOTÃO
+# ============================================================
+
+if st.button(
+    "🔍 CONFERIR LIBERAÇÕES DO DIA"
+):
 
     try:
 
-        # ----------------------------------------------------
-        # 1. GOOGLE SHEETS
-        # ----------------------------------------------------
-
-        checkins = (
-            buscar_checkins()
-        )
-
-        # ----------------------------------------------------
-        # 2. LIMPEZAS DE HOJE
-        # ----------------------------------------------------
-
-        limpezas_hoje = (
-            buscar_limpezas_hoje()
-        )
-
-        # ----------------------------------------------------
-        # 3. PROPERTIES DAS LIMPEZAS DE HOJE
-        # ----------------------------------------------------
-
-        property_ids_hoje = []
-
-        for limpeza in limpezas_hoje:
-
-            property_id = (
-                limpeza.get(
-                    "property_id"
-                )
-            )
-
-            if (
-                property_id
-                and
-                property_id
-                not in property_ids_hoje
-            ):
-
-                property_ids_hoje.append(
-                    property_id
-                )
-
-        properties_hoje = (
-            buscar_properties(
-                property_ids_hoje
-            )
-        )
-
-        # ----------------------------------------------------
-        # 4. PROPERTIES GERAIS
-        # Necessárias para consultar histórico.
-        # ----------------------------------------------------
-
-        todas_properties = (
-            buscar_todas_properties()
-        )
-
-        # ----------------------------------------------------
-        # 5. APARTAMENTOS SEM LIMPEZA HOJE
-        # ----------------------------------------------------
-
-        codigos_limpeza_hoje = set()
-
-        for limpeza in limpezas_hoje:
-
-            property_id = (
-                limpeza.get(
-                    "property_id"
-                )
-            )
-
-            property_data = (
-                properties_hoje.get(
-                    property_id
-                )
-            )
-
-            if property_data:
-
-                codigo = (
-                    property_data["codigo"]
-                )
-
-                if codigo:
-
-                    codigos_limpeza_hoje.add(
-                        codigo
-                    )
-
-        codigos_checkin = set(
-            checkin["codigo"]
-            for checkin in checkins
-        )
-
-        codigos_sem_limpeza = (
-            codigos_checkin
-            -
-            codigos_limpeza_hoje
-        )
-
-        # ----------------------------------------------------
-        # 6. LOCALIZAR PROPERTY IDS
-        # DOS APARTAMENTOS SEM LIMPEZA
-        # ----------------------------------------------------
-
-        property_ids_historico = []
-
-        for property_id, property_data in (
-            todas_properties.items()
+        with st.spinner(
+            "Consultando check-ins e liberações..."
         ):
 
-            if (
-                property_data["codigo"]
-                in codigos_sem_limpeza
+            (
+
+                checkins,
+
+                liberacoes,
+
+                checkins_com_liberacao,
+
+                checkins_sem_liberacao
+
+            ) = conferir_liberacoes()
+
+
+        # ====================================================
+        # MÉTRICAS
+        # ====================================================
+
+        total_checkins = len(
+            checkins
+        )
+
+        total_liberacoes = len(
+            set(
+                liberacao["codigo"]
+
+                for liberacao in liberacoes
+            )
+        )
+
+        total_pendencias = len(
+            checkins_sem_liberacao
+        )
+
+
+        col1, col2, col3 = st.columns(3)
+
+
+        with col1:
+
+            st.markdown(
+
+                f"""
+
+                <div class="metric-card">
+
+                    <div class="metric-label">
+                        CHECK-INS DO DIA
+                    </div>
+
+                    <div class="metric-value">
+                        {total_checkins}
+                    </div>
+
+                </div>
+
+                """,
+
+                unsafe_allow_html=True
+            )
+
+
+        with col2:
+
+            st.markdown(
+
+                f"""
+
+                <div class="metric-card">
+
+                    <div class="metric-label">
+                        LIBERAÇÕES ENCONTRADAS
+                    </div>
+
+                    <div class="metric-value">
+                        {total_liberacoes}
+                    </div>
+
+                </div>
+
+                """,
+
+                unsafe_allow_html=True
+            )
+
+
+        with col3:
+
+            st.markdown(
+
+                f"""
+
+                <div class="metric-card">
+
+                    <div class="metric-label">
+                        PENDÊNCIAS
+                    </div>
+
+                    <div class="metric-value">
+                        {total_pendencias}
+                    </div>
+
+                </div>
+
+                """,
+
+                unsafe_allow_html=True
+            )
+
+
+        # ====================================================
+        # SUCESSO TOTAL
+        # ====================================================
+
+        if not checkins_sem_liberacao:
+
+            st.markdown(
+
+                """
+
+                <div class="success-box">
+
+                    🟢 TODAS AS LIBERAÇÕES DOS
+                    CHECK-INS DE HOJE ESTÃO CADASTRADAS!
+
+                </div>
+
+                """,
+
+                unsafe_allow_html=True
+            )
+
+
+        # ====================================================
+        # LISTAS
+        # ====================================================
+
+        html = """
+
+        <div class="cards-wrapper">
+
+        """
+
+
+        # ====================================================
+        # VERDE
+        # ====================================================
+
+        html += """
+
+        <div class="status-card green-card">
+
+            <div class="status-header">
+
+                <div class="status-icon">
+                    ✓
+                </div>
+
+                <div class="status-title">
+
+                    Check-ins com liberação
+
+                </div>
+
+            </div>
+
+        """
+
+
+        if checkins_com_liberacao:
+
+            codigos_mostrados = set()
+
+            for checkin in sorted(
+                checkins_com_liberacao,
+                key=lambda x: x["codigo"]
             ):
 
-                property_ids_historico.append(
-                    property_id
+                codigo = checkin["codigo"]
+
+                if codigo in codigos_mostrados:
+                    continue
+
+                codigos_mostrados.add(
+                    codigo
                 )
 
-        # ----------------------------------------------------
-        # 7. BUSCAR HISTÓRICO
-        # ----------------------------------------------------
-
-        historico = []
-
-        if property_ids_historico:
-
-            print("=" * 70)
-            print(
-                "4. BUSCANDO HISTÓRICO DAS "
-                "UNIDADES SEM LIMPEZA HOJE"
-            )
-            print("=" * 70)
-
-            print()
-
-            historico = (
-                buscar_historico_limpezas(
-                    property_ids_historico
+                hospede = (
+                    checkin["hospede"]
+                    or "Hóspede não identificado"
                 )
-            )
 
-        # ----------------------------------------------------
-        # 8. MAPA DA ÚLTIMA LIMPEZA
-        # ----------------------------------------------------
+                html += f"""
 
-        ultima_limpeza = (
-            montar_ultima_limpeza(
-                historico,
-                todas_properties
-            )
+                <div class="apt-row">
+
+                    <div class="apt-left">
+
+                        <div class="small-icon green-small">
+                            ✓
+                        </div>
+
+                        <div class="apt-code">
+                            {checkin["codigo_original"]}
+                        </div>
+
+                    </div>
+
+                    <div class="apt-description">
+
+                        {hospede}
+
+                    </div>
+
+                </div>
+
+                """
+
+        else:
+
+            html += """
+
+            <div class="empty-card">
+
+                Nenhum check-in com
+                liberação encontrado.
+
+            </div>
+
+            """
+
+
+        html += """
+
+        </div>
+
+        """
+
+
+        # ====================================================
+        # VERMELHO
+        # ====================================================
+
+        html += """
+
+        <div class="status-card red-card">
+
+            <div class="status-header">
+
+                <div class="status-icon">
+                    !
+                </div>
+
+                <div class="status-title">
+
+                    Check-ins sem liberação
+
+                </div>
+
+            </div>
+
+        """
+
+
+        if checkins_sem_liberacao:
+
+            codigos_mostrados = set()
+
+            for checkin in sorted(
+                checkins_sem_liberacao,
+                key=lambda x: x["codigo"]
+            ):
+
+                codigo = checkin["codigo"]
+
+                if codigo in codigos_mostrados:
+                    continue
+
+                codigos_mostrados.add(
+                    codigo
+                )
+
+                hospede = (
+                    checkin["hospede"]
+                    or "Hóspede não identificado"
+                )
+
+                html += f"""
+
+                <div class="apt-row">
+
+                    <div class="apt-left">
+
+                        <div class="small-icon red-small">
+                            !
+                        </div>
+
+                        <div class="apt-code">
+                            {checkin["codigo_original"]}
+                        </div>
+
+                    </div>
+
+                    <div class="apt-description">
+
+                        {hospede}
+
+                    </div>
+
+                </div>
+
+                """
+
+        else:
+
+            html += """
+
+            <div class="empty-card">
+
+                🟢 Nenhuma pendência encontrada.
+
+            </div>
+
+            """
+
+
+        html += """
+
+        </div>
+
+        </div>
+
+        """
+
+
+        st.markdown(
+
+            html,
+
+            unsafe_allow_html=True
         )
 
-        # ----------------------------------------------------
-        # 9. CONFERÊNCIA FINAL
-        # ----------------------------------------------------
-
-        realizar_conferencia(
-            checkins,
-            limpezas_hoje,
-            properties_hoje,
-            todas_properties,
-            ultima_limpeza
-        )
 
     except Exception as erro:
 
-        print()
-        print("=" * 70)
-        print("ERRO")
-        print("=" * 70)
-        print()
+        st.error(
 
-        print(
-            str(erro)
+            "❌ Ocorreu um erro durante "
+            "a conferência."
         )
 
-        print()
+        st.exception(
+            erro
+        )
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.markdown(
+
+    """
+
+    <div class="footer">
+
+        TAMU • Conferência automática de liberações
+
+    </div>
+
+    """,
+
+    unsafe_allow_html=True
+)

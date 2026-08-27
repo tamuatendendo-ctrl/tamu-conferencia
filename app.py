@@ -14,11 +14,10 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-from config import (
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY,
-    SUPABASE_REFRESH_TOKEN
-)
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
+SUPABASE_REFRESH_TOKEN = st.secrets["SUPABASE_REFRESH_TOKEN"]
+
 
 
 # ============================================================

@@ -1,7 +1,3 @@
-# ============================================================
-# ARQUIVO CORRIGIDO — BOTÃO DE LIBERAÇÕES DENTRO DO HERO
-# ============================================================
-
 # -*- coding: utf-8 -*-
 
 import os
@@ -18,11 +14,11 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-import streamlit as st
-
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
-SUPABASE_REFRESH_TOKEN = st.secrets["SUPABASE_REFRESH_TOKEN"]
+from config import (
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY,
+    SUPABASE_REFRESH_TOKEN
+)
 
 
 # ============================================================
@@ -144,13 +140,6 @@ header {
     font-size: 17px;
 
     margin-bottom: 24px;
-}
-
-.hero-bottom {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
 }
 
 .hero-date {
@@ -1733,26 +1722,6 @@ hero_html = f"""
         <a
             href="/Liberacoes"
             class="liberacoes-nav-button"
-            style="
-                position: static !important;
-                left: auto !important;
-                right: auto !important;
-                top: auto !important;
-                bottom: auto !important;
-                margin: 0 !important;
-                display: inline-flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                flex-shrink: 0 !important;
-                padding: 14px 18px !important;
-                border-radius: 12px !important;
-                background: linear-gradient(135deg, #ff3344, #ff5964) !important;
-                color: white !important;
-                font-size: 14px !important;
-                font-weight: 800 !important;
-                text-decoration: none !important;
-                box-shadow: 0 10px 25px rgba(255, 51, 68, 0.20) !important;
-            "
         >
             🔐 Conferência de Liberações
         </a>

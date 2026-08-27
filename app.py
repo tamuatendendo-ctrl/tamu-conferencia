@@ -1,83 +1,49 @@
+# ============================================================
+# ARQUIVO CORRIGIDO — BOTÃO DE LIBERAÇÕES DENTRO DO HERO
+# ============================================================
+
 # -*- coding: utf-8 -*-
 
 import os
 import json
 import re
+import textwrap
 from datetime import datetime, date
 
 import requests
+import gspread
 import streamlit as st
 
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import InstalledAppFlow
 
-# ============================================================
-# CONFIGURAÇÃO
-# ============================================================
-
-APP_SCRIPT_URL = (
-    "https://script.google.com/macros/s/"
-    "AKfycbyTDYZhj_w0S3wpKUAPOHMBWgQ8iXxpjjIOVyYTaJ78veFoJOozROVSQOyPSebZ5JI36g/"
-    "exec"
+from config import (
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY,
+    SUPABASE_REFRESH_TOKEN
 )
 
+
+# ============================================================
+# CONFIGURAÇÕES
+# ============================================================
+
+ARQUIVO_CREDENCIAL = "google_oauth.json"
+ARQUIVO_TOKEN_GOOGLE = "google_token.json"
 ARQUIVO_TOKEN_SUPABASE = "supabase_token.json"
 
+SPREADSHEET_ID = "1DSrif82ExLPDuloafYUk2F8xXKvf0mAkMSDXqfQ3EOs"
 
-# ============================================================
-# CONFIGURAÇÕES DO SUPABASE
-# ============================================================
+ABA_CHECKINS = "CHECKINS DO DIA"
 
-def obter_config_supabase():
-
-    # --------------------------------------------
-    # STREAMLIT CLOUD
-    # --------------------------------------------
-
-    try:
-
-        if "SUPABASE_URL" in st.secrets:
-
-            return (
-                st.secrets["SUPABASE_URL"],
-                st.secrets["SUPABASE_ANON_KEY"],
-                st.secrets["SUPABASE_REFRESH_TOKEN"]
-            )
-
-    except Exception:
-        pass
-
-
-    # --------------------------------------------
-    # LOCAL
-    # --------------------------------------------
-
-    try:
-
-        from config import (
-            SUPABASE_URL,
-            SUPABASE_ANON_KEY,
-            SUPABASE_REFRESH_TOKEN
-        )
-
-        return (
-            SUPABASE_URL,
-            SUPABASE_ANON_KEY,
-            SUPABASE_REFRESH_TOKEN
-        )
-
-    except Exception:
-
-        raise Exception(
-            "As credenciais do Supabase não foram configuradas."
-        )
-
-
-SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_REFRESH_TOKEN = (
-    obter_config_supabase()
-)
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets.readonly"
+]
 
 
 # ============================================================
-# STREAMLIT
+# CONFIGURAÇÃO STREAMLIT
 # ============================================================
 
 st.set_page_config(
@@ -112,12 +78,18 @@ CSS = """
 
 .block-container {
     max-width: 1450px;
-    padding-top: 1.2rem;
+    padding-top: 2rem;
     padding-bottom: 2rem;
 }
 
-#MainMenu,
-footer,
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
 header {
     visibility: hidden;
 }
@@ -148,7 +120,7 @@ header {
 
     padding: 42px 48px;
 
-    margin-bottom: 22px;
+    margin-bottom: 24px;
 
     box-shadow:
         0 20px 45px rgba(15, 23, 42, 0.16);
@@ -156,21 +128,36 @@ header {
 
 .hero-title {
     color: white;
+
     font-size: 38px;
+
     font-weight: 800;
+
     letter-spacing: -1px;
+
     margin-bottom: 8px;
 }
 
 .hero-subtitle {
     color: #cbd5e1;
+
     font-size: 17px;
+
     margin-bottom: 24px;
+}
+
+.hero-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
 }
 
 .hero-date {
     display: inline-flex;
+
     align-items: center;
+
     gap: 10px;
 
     background: rgba(255,255,255,0.09);
@@ -184,6 +171,7 @@ header {
     padding: 10px 16px;
 
     font-size: 16px;
+
     font-weight: 700;
 }
 
@@ -240,7 +228,7 @@ div.stButton > button:hover {
 
 
 /* ==========================================================
-   ÁREA DOS 3 CARDS
+   CARDS
 ========================================================== */
 
 .cards-wrapper {
@@ -254,13 +242,8 @@ div.stButton > button:hover {
 
     margin-top: 24px;
 
-    align-items: start;
+    align-items: stretch;
 }
-
-
-/* ==========================================================
-   CARD
-========================================================== */
 
 .status-card {
 
@@ -274,12 +257,9 @@ div.stButton > button:hover {
 
     box-shadow:
         0 8px 25px rgba(15, 23, 42, 0.06);
+
+    min-height: 0;
 }
-
-
-/* ==========================================================
-   CABEÇALHO
-========================================================== */
 
 .status-header {
 
@@ -289,18 +269,18 @@ div.stButton > button:hover {
 
     gap: 11px;
 
-    padding: 15px 16px;
+    padding: 14px 16px;
 
     border-bottom: 1px solid #edf0f4;
 }
 
 .status-icon {
 
-    width: 32px;
+    width: 34px;
 
-    height: 32px;
+    height: 34px;
 
-    min-width: 32px;
+    min-width: 34px;
 
     border-radius: 50%;
 
@@ -310,14 +290,14 @@ div.stButton > button:hover {
 
     justify-content: center;
 
-    font-size: 17px;
+    font-size: 18px;
 
     font-weight: 900;
 }
 
 .status-title {
 
-    font-size: 16px;
+    font-size: 17px;
 
     font-weight: 800;
 
@@ -392,7 +372,7 @@ div.stButton > button:hover {
 
 
 /* ==========================================================
-   LINHA DO APARTAMENTO
+   APARTAMENTOS
 ========================================================== */
 
 .apt-row {
@@ -403,13 +383,11 @@ div.stButton > button:hover {
 
     justify-content: space-between;
 
-    gap: 10px;
+    gap: 12px;
 
-    padding: 9px 14px;
+    padding: 8px 14px;
 
     border-bottom: 1px solid #f0f2f5;
-
-    min-height: 43px;
 }
 
 .apt-row:last-child {
@@ -422,14 +400,14 @@ div.stButton > button:hover {
 
     align-items: center;
 
-    gap: 9px;
+    gap: 10px;
 
     min-width: 0;
 }
 
 .apt-code {
 
-    font-size: 14px;
+    font-size: 15px;
 
     font-weight: 800;
 
@@ -439,34 +417,23 @@ div.stButton > button:hover {
 }
 
 .apt-description {
-    font-size: 15px;
-    font-weight: 800;
-    color: #475569;
+
+    font-size: 13px;
+
+    color: #64748b;
+
     white-space: nowrap;
+
     text-align: right;
-}
-
-/* Destaque — cronograma diário */
-.green-card .apt-description {
-    color: #15803d;
-    font-size: 15px;
-    font-weight: 800;
-}
-
-/* Destaque — última limpeza */
-.red-card .apt-description {
-    color: #dc2626;
-    font-size: 15px;
-    font-weight: 800;
 }
 
 .small-icon {
 
-    width: 24px;
+    width: 25px;
 
-    height: 24px;
+    height: 25px;
 
-    min-width: 24px;
+    min-width: 25px;
 
     border-radius: 50%;
 
@@ -476,7 +443,7 @@ div.stButton > button:hover {
 
     justify-content: center;
 
-    font-size: 12px;
+    font-size: 13px;
 
     font-weight: 900;
 }
@@ -503,13 +470,13 @@ div.stButton > button:hover {
 
 .empty-card {
 
-    padding: 20px;
+    padding: 30px 20px;
 
     text-align: center;
 
     color: #94a3b8;
 
-    font-size: 13px;
+    font-size: 14px;
 }
 
 
@@ -525,7 +492,7 @@ div.stButton > button:hover {
 
     font-size: 13px;
 
-    margin-top: 28px;
+    margin-top: 32px;
 
     padding-bottom: 10px;
 }
@@ -538,19 +505,91 @@ div.stButton > button:hover {
 @media (max-width: 900px) {
 
     .cards-wrapper {
+
         grid-template-columns: 1fr;
+
     }
 
     .hero {
+
         padding: 30px 25px;
+
     }
 
     .hero-title {
+
         font-size: 28px;
+
     }
 
     .apt-description {
+
         white-space: normal;
+
+    }
+}
+
+
+/* ==========================================================
+   BOTÃO — CONFERÊNCIA DE LIBERAÇÕES
+========================================================== */
+
+.liberacoes-nav-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    flex-shrink: 0;
+
+    padding: 14px 18px;
+
+    border-radius: 12px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #ff3344,
+            #ff5964
+        );
+
+    color: white !important;
+
+    font-size: 14px;
+    font-weight: 800;
+
+    text-decoration: none !important;
+
+    box-shadow:
+        0 10px 25px rgba(255, 51, 68, 0.20);
+
+    transition: all 0.2s ease;
+}
+
+.liberacoes-nav-button:hover {
+    transform: translateY(-1px);
+
+    box-shadow:
+        0 14px 30px rgba(255, 51, 68, 0.28);
+
+    background:
+        linear-gradient(
+            135deg,
+            #f51f31,
+            #ff4c59
+        );
+
+    color: white !important;
+}
+
+@media (max-width: 900px) {
+    .hero-bottom {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .liberacoes-nav-button {
+        padding: 11px 14px;
+        font-size: 12px;
     }
 }
 
@@ -558,7 +597,7 @@ div.stButton > button:hover {
 """
 
 st.markdown(
-    CSS,
+    textwrap.dedent(CSS),
     unsafe_allow_html=True
 )
 
@@ -586,66 +625,379 @@ def normalizar_codigo(codigo):
 
 
 # ============================================================
-# GOOGLE SHEETS VIA APPS SCRIPT
+# AUTENTICAÇÃO GOOGLE
 # ============================================================
 
-def buscar_checkins():
+def autenticar_google():
 
-    resposta = requests.get(
-        APP_SCRIPT_URL,
-        timeout=60,
-        allow_redirects=True
+    credentials = None
+
+    if os.path.exists(
+        ARQUIVO_TOKEN_GOOGLE
+    ):
+
+        credentials = (
+            Credentials
+            .from_authorized_user_file(
+                ARQUIVO_TOKEN_GOOGLE,
+                SCOPES
+            )
+        )
+
+    if credentials:
+
+        if (
+            credentials.expired
+            and credentials.refresh_token
+        ):
+
+            credentials.refresh(
+                Request()
+            )
+
+    if (
+        not credentials
+        or not credentials.valid
+    ):
+
+        flow = (
+            InstalledAppFlow
+            .from_client_secrets_file(
+                ARQUIVO_CREDENCIAL,
+                SCOPES
+            )
+        )
+
+        credentials = (
+            flow.run_local_server(
+                port=0
+            )
+        )
+
+        with open(
+            ARQUIVO_TOKEN_GOOGLE,
+            "w",
+            encoding="utf-8"
+        ) as arquivo:
+
+            arquivo.write(
+                credentials.to_json()
+            )
+
+    return credentials
+
+
+# ============================================================
+# TOKEN SUPABASE
+# ============================================================
+
+def salvar_token_supabase(
+    access_token,
+    refresh_token=None,
+    expires_in=None
+):
+
+    dados = {
+
+        "access_token":
+            access_token,
+
+        "refresh_token":
+            refresh_token,
+
+        "expires_in":
+            expires_in,
+
+        "saved_at":
+            datetime.now().isoformat()
+    }
+
+    with open(
+        ARQUIVO_TOKEN_SUPABASE,
+        "w",
+        encoding="utf-8"
+    ) as arquivo:
+
+        json.dump(
+            dados,
+            arquivo,
+            indent=4,
+            ensure_ascii=False
+        )
+
+
+def renovar_token_supabase():
+
+    url = (
+        f"{SUPABASE_URL}"
+        f"/auth/v1/token"
+        f"?grant_type=refresh_token"
+    )
+
+    headers = {
+
+        "apikey":
+            SUPABASE_ANON_KEY,
+
+        "Content-Type":
+            "application/json"
+    }
+
+    # Usa sempre o refresh token mais recente salvo localmente.
+    # Isso evita o erro refresh_token_already_used quando o Supabase
+    # faz rotação do refresh token após uma renovação.
+    refresh_token = None
+
+    if os.path.exists(
+        ARQUIVO_TOKEN_SUPABASE
+    ):
+
+        try:
+
+            with open(
+                ARQUIVO_TOKEN_SUPABASE,
+                "r",
+                encoding="utf-8"
+            ) as arquivo:
+
+                dados_token = json.load(
+                    arquivo
+                )
+
+            refresh_token = dados_token.get(
+                "refresh_token"
+            )
+
+        except Exception:
+
+            refresh_token = None
+
+    # Primeira execução: utiliza o token original do config.py.
+    if not refresh_token:
+
+        refresh_token = (
+            SUPABASE_REFRESH_TOKEN
+        )
+
+    payload = {
+
+        "refresh_token":
+            refresh_token
+    }
+
+    resposta = requests.post(
+
+        url,
+
+        headers=headers,
+
+        json=payload,
+
+        timeout=30
     )
 
     if resposta.status_code != 200:
 
         raise Exception(
-            "Não foi possível consultar "
-            "a aba CHECKINS DO DIA.\n\n"
+            "Não foi possível renovar "
+            "a sessão do Supabase.\n\n"
             f"HTTP {resposta.status_code}\n"
             f"{resposta.text}"
         )
 
-    try:
+    dados = resposta.json()
 
-        dados = resposta.json()
-
-    except Exception:
-
-        raise Exception(
-            "O Apps Script não retornou "
-            "um JSON válido."
-        )
-
-    if not dados.get("sucesso"):
-
-        raise Exception(
-            "O Apps Script retornou um erro:\n\n"
-            + str(dados)
-        )
-
-    linhas = dados.get(
-        "dados",
-        []
+    access_token = dados.get(
+        "access_token"
     )
 
-    checkins = []
+    novo_refresh_token = dados.get(
+        "refresh_token"
+    )
+
+    expires_in = dados.get(
+        "expires_in"
+    )
+
+    if not access_token:
+
+        raise Exception(
+            "Supabase não retornou "
+            "um access token."
+        )
+
+    # Se o Supabase não retornar outro refresh token,
+    # preserva o atual para a próxima renovação.
+    if not novo_refresh_token:
+
+        novo_refresh_token = refresh_token
+
+    salvar_token_supabase(
+        access_token,
+        novo_refresh_token,
+        expires_in
+    )
+
+    return access_token
+
+
+def obter_access_token_supabase():
+
+    if os.path.exists(
+        ARQUIVO_TOKEN_SUPABASE
+    ):
+
+        try:
+
+            with open(
+                ARQUIVO_TOKEN_SUPABASE,
+                "r",
+                encoding="utf-8"
+            ) as arquivo:
+
+                dados = json.load(
+                    arquivo
+                )
+
+            access_token = dados.get(
+                "access_token"
+            )
+
+            if access_token:
+
+                return access_token
+
+        except Exception:
+
+            pass
+
+    return renovar_token_supabase()
+
+
+# ============================================================
+# SUPABASE GET
+# ============================================================
+
+def supabase_get(
+    endpoint,
+    params=None
+):
+
+    access_token = (
+        obter_access_token_supabase()
+    )
+
+    headers = {
+
+        "apikey":
+            SUPABASE_ANON_KEY,
+
+        "Authorization":
+            f"Bearer {access_token}"
+    }
+
+    resposta = requests.get(
+
+        endpoint,
+
+        params=params,
+
+        headers=headers,
+
+        timeout=30
+    )
+
+    if resposta.status_code == 401:
+
+        try:
+
+            erro = resposta.json()
+
+        except Exception:
+
+            erro = {}
+
+        mensagem = str(
+            erro.get(
+                "message",
+                ""
+            )
+        ).lower()
+
+        if (
+            "jwt" in mensagem
+            or "expired" in mensagem
+            or "token" in mensagem
+        ):
+
+            access_token = (
+                renovar_token_supabase()
+            )
+
+            headers = {
+
+                "apikey":
+                    SUPABASE_ANON_KEY,
+
+                "Authorization":
+                    f"Bearer {access_token}"
+            }
+
+            resposta = requests.get(
+
+                endpoint,
+
+                params=params,
+
+                headers=headers,
+
+                timeout=30
+            )
+
+    return resposta
+
+
+# ============================================================
+# CHECK-INS
+# ============================================================
+
+def buscar_checkins():
+
+    credentials = (
+        autenticar_google()
+    )
+
+    client = gspread.authorize(
+        credentials
+    )
+
+    spreadsheet = (
+        client.open_by_key(
+            SPREADSHEET_ID
+        )
+    )
+
+    worksheet = (
+        spreadsheet.worksheet(
+            ABA_CHECKINS
+        )
+    )
+
+    dados = (
+        worksheet.get_all_values()
+    )
 
     padrao_apartamento = re.compile(
         r"^\d{6}[A-Z]?$",
         re.IGNORECASE
     )
 
+    checkins = []
+
     for numero_linha, linha in enumerate(
-        linhas,
+        dados,
         start=1
     ):
-
-        if not isinstance(
-            linha,
-            list
-        ):
-            continue
 
         for indice_coluna, valor in enumerate(
             linha
@@ -677,13 +1029,6 @@ def buscar_checkins():
 
             hospede = ""
 
-            # Pela estrutura atual da aba:
-            #
-            # apartamento | hóspede | data
-            #
-            # Portanto o hóspede está na
-            # coluna imediatamente seguinte.
-
             if (
                 indice_coluna + 1
                 < len(linha)
@@ -697,7 +1042,6 @@ def buscar_checkins():
 
                 if possivel_hospede:
 
-                    # Não considerar data como hóspede
                     eh_data = False
 
                     for formato in (
@@ -714,6 +1058,7 @@ def buscar_checkins():
                             )
 
                             eh_data = True
+
                             break
 
                         except ValueError:
@@ -725,6 +1070,40 @@ def buscar_checkins():
                         hospede = (
                             possivel_hospede
                         )
+
+            registro_existente = False
+
+            for registro in checkins:
+
+                if (
+
+                    registro[
+                        "codigo_original"
+                    ]
+                    == codigo_original
+
+                    and
+
+                    registro[
+                        "hospede"
+                    ]
+                    == hospede
+
+                    and
+
+                    registro[
+                        "linha"
+                    ]
+                    == numero_linha
+
+                ):
+
+                    registro_existente = True
+
+                    break
+
+            if registro_existente:
+                continue
 
             checkins.append({
 
@@ -742,317 +1121,6 @@ def buscar_checkins():
             })
 
     return checkins
-
-
-# ============================================================
-# SUPABASE — SALVAR TOKEN
-# ============================================================
-
-def salvar_token_supabase(
-    access_token,
-    refresh_token=None,
-    expires_in=None
-):
-
-    dados = {
-
-        "access_token":
-            access_token,
-
-        "refresh_token":
-            refresh_token,
-
-        "expires_in":
-            expires_in,
-
-        "saved_at":
-            datetime.now().isoformat()
-    }
-
-    try:
-
-        with open(
-            ARQUIVO_TOKEN_SUPABASE,
-            "w",
-            encoding="utf-8"
-        ) as arquivo:
-
-            json.dump(
-                dados,
-                arquivo,
-                indent=4,
-                ensure_ascii=False
-            )
-
-    except Exception:
-        # No Streamlit Cloud o arquivo pode
-        # não ser persistente. Nesse caso
-        # continuamos usando a sessão atual.
-        pass
-
-
-# ============================================================
-# SUPABASE — OBTER REFRESH TOKEN
-# ============================================================
-
-def obter_refresh_token_supabase():
-
-    # Primeiro tenta o token salvo localmente.
-
-    if os.path.exists(
-        ARQUIVO_TOKEN_SUPABASE
-    ):
-
-        try:
-
-            with open(
-                ARQUIVO_TOKEN_SUPABASE,
-                "r",
-                encoding="utf-8"
-            ) as arquivo:
-
-                dados = json.load(
-                    arquivo
-                )
-
-            refresh_token = (
-                dados.get(
-                    "refresh_token"
-                )
-            )
-
-            if refresh_token:
-
-                return refresh_token
-
-        except Exception:
-            pass
-
-
-    # No Streamlit Cloud usa Secrets.
-
-    try:
-
-        if (
-            "SUPABASE_REFRESH_TOKEN"
-            in st.secrets
-        ):
-
-            return st.secrets[
-                "SUPABASE_REFRESH_TOKEN"
-            ]
-
-    except Exception:
-        pass
-
-
-    return SUPABASE_REFRESH_TOKEN
-
-
-# ============================================================
-# SUPABASE — RENOVAR TOKEN
-# ============================================================
-
-def renovar_token_supabase():
-
-    refresh_token = (
-        obter_refresh_token_supabase()
-    )
-
-    url = (
-        f"{SUPABASE_URL}"
-        f"/auth/v1/token"
-        f"?grant_type=refresh_token"
-    )
-
-    headers = {
-
-        "apikey":
-            SUPABASE_ANON_KEY,
-
-        "Content-Type":
-            "application/json"
-    }
-
-    payload = {
-
-        "refresh_token":
-            refresh_token
-    }
-
-    resposta = requests.post(
-        url,
-        headers=headers,
-        json=payload,
-        timeout=30
-    )
-
-    if resposta.status_code != 200:
-
-        raise Exception(
-            "Não foi possível renovar "
-            "a sessão do Supabase.\n\n"
-            f"HTTP {resposta.status_code} "
-            f"{resposta.text}"
-        )
-
-    dados = resposta.json()
-
-    access_token = (
-        dados.get(
-            "access_token"
-        )
-    )
-
-    novo_refresh_token = (
-        dados.get(
-            "refresh_token"
-        )
-    )
-
-    expires_in = (
-        dados.get(
-            "expires_in"
-        )
-    )
-
-    if not access_token:
-
-        raise Exception(
-            "Supabase não retornou "
-            "um access token."
-        )
-
-    salvar_token_supabase(
-        access_token,
-        novo_refresh_token or refresh_token,
-        expires_in
-    )
-
-    # Mantém o token atualizado na sessão
-    # atual do Streamlit.
-
-    st.session_state[
-        "supabase_access_token"
-    ] = access_token
-
-    st.session_state[
-        "supabase_refresh_token"
-    ] = (
-        novo_refresh_token
-        or refresh_token
-    )
-
-    return access_token
-
-
-# ============================================================
-# SUPABASE — ACCESS TOKEN
-# ============================================================
-
-def obter_access_token_supabase():
-
-    if (
-        "supabase_access_token"
-        in st.session_state
-    ):
-
-        return st.session_state[
-            "supabase_access_token"
-        ]
-
-
-    # Tenta arquivo local
-
-    if os.path.exists(
-        ARQUIVO_TOKEN_SUPABASE
-    ):
-
-        try:
-
-            with open(
-                ARQUIVO_TOKEN_SUPABASE,
-                "r",
-                encoding="utf-8"
-            ) as arquivo:
-
-                dados = json.load(
-                    arquivo
-                )
-
-            access_token = (
-                dados.get(
-                    "access_token"
-                )
-            )
-
-            if access_token:
-
-                st.session_state[
-                    "supabase_access_token"
-                ] = access_token
-
-                return access_token
-
-        except Exception:
-            pass
-
-
-    return renovar_token_supabase()
-
-
-# ============================================================
-# SUPABASE GET
-# ============================================================
-
-def supabase_get(
-    endpoint,
-    params=None
-):
-
-    access_token = (
-        obter_access_token_supabase()
-    )
-
-    headers = {
-
-        "apikey":
-            SUPABASE_ANON_KEY,
-
-        "Authorization":
-            f"Bearer {access_token}"
-    }
-
-    resposta = requests.get(
-        endpoint,
-        params=params,
-        headers=headers,
-        timeout=30
-    )
-
-    if resposta.status_code == 401:
-
-        access_token = (
-            renovar_token_supabase()
-        )
-
-        headers = {
-
-            "apikey":
-                SUPABASE_ANON_KEY,
-
-            "Authorization":
-                f"Bearer {access_token}"
-        }
-
-        resposta = requests.get(
-            endpoint,
-            params=params,
-            headers=headers,
-            timeout=30
-        )
-
-    return resposta
 
 
 # ============================================================
@@ -1162,12 +1230,16 @@ def buscar_properties(
             f"{resposta.text}"
         )
 
+    properties = resposta.json()
+
     mapa = {}
 
-    for property_data in resposta.json():
+    for property_data in properties:
 
         property_id = (
-            property_data.get("id")
+            property_data.get(
+                "id"
+            )
         )
 
         codigo_original = str(
@@ -1232,9 +1304,11 @@ def buscar_todas_properties():
             f"{resposta.text}"
         )
 
+    properties = resposta.json()
+
     mapa = {}
 
-    for property_data in resposta.json():
+    for property_data in properties:
 
         codigo_original = str(
             property_data.get(
@@ -1355,6 +1429,7 @@ def extrair_data_limpeza(
             ).date()
 
         except Exception:
+
             pass
 
     if started_at and scheduled_date:
@@ -1367,6 +1442,7 @@ def extrair_data_limpeza(
             ).date()
 
         except Exception:
+
             pass
 
     if scheduled_date:
@@ -1379,6 +1455,7 @@ def extrair_data_limpeza(
             ).date()
 
         except Exception:
+
             pass
 
     return None
@@ -1454,18 +1531,9 @@ def montar_ultima_limpeza(
 
 def executar_conferencia():
 
-    # --------------------------------------------------------
-    # CHECK-INS
-    # Agora vêm exclusivamente do Apps Script.
-    # --------------------------------------------------------
-
     checkins = (
         buscar_checkins()
     )
-
-    # --------------------------------------------------------
-    # LIMPEZAS
-    # --------------------------------------------------------
 
     limpezas_hoje = (
         buscar_limpezas_hoje()
@@ -1526,20 +1594,23 @@ def executar_conferencia():
                 codigo
             )
 
-    # --------------------------------------------------------
-    # COMPARAÇÃO
-    # --------------------------------------------------------
-
     codigos_checkin = set(
+
         checkin["codigo"]
+
         for checkin in checkins
+
     )
 
     checkins_com_limpeza = [
+
         checkin
+
         for checkin in checkins
+
         if checkin["codigo"]
         in codigos_limpeza_hoje
+
     ]
 
     limpezas_sem_checkin = (
@@ -1549,10 +1620,14 @@ def executar_conferencia():
     )
 
     checkins_sem_limpeza = [
+
         checkin
+
         for checkin in checkins
+
         if checkin["codigo"]
         not in codigos_limpeza_hoje
+
     ]
 
     codigos_sem_limpeza = (
@@ -1560,10 +1635,6 @@ def executar_conferencia():
         -
         codigos_limpeza_hoje
     )
-
-    # --------------------------------------------------------
-    # HISTÓRICO
-    # --------------------------------------------------------
 
     todas_properties = {}
 
@@ -1644,8 +1715,48 @@ hero_html = f"""
         Conferência automática de check-ins × limpezas
     </div>
 
-    <div class="hero-date">
-        📅 {hoje.strftime("%d/%m/%Y")}
+    <div
+        class="hero-bottom"
+        style="
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            width: 100% !important;
+            gap: 24px !important;
+        "
+    >
+
+        <div class="hero-date">
+            📅 {hoje.strftime("%d/%m/%Y")}
+        </div>
+
+        <a
+            href="/Liberacoes"
+            class="liberacoes-nav-button"
+            style="
+                position: static !important;
+                left: auto !important;
+                right: auto !important;
+                top: auto !important;
+                bottom: auto !important;
+                margin: 0 !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                flex-shrink: 0 !important;
+                padding: 14px 18px !important;
+                border-radius: 12px !important;
+                background: linear-gradient(135deg, #ff3344, #ff5964) !important;
+                color: white !important;
+                font-size: 14px !important;
+                font-weight: 800 !important;
+                text-decoration: none !important;
+                box-shadow: 0 10px 25px rgba(255, 51, 68, 0.20) !important;
+            "
+        >
+            🔐 Conferência de Liberações
+        </a>
+
     </div>
 
 </div>
@@ -1704,7 +1815,7 @@ if verificar:
 
 
 # ============================================================
-# RESULTADO INICIAL
+# RESULTADO
 # ============================================================
 
 if (
@@ -1717,20 +1828,20 @@ if (
         background:white;
         border:1px solid #e5e7eb;
         border-radius:18px;
-        padding:38px 25px;
+        padding:45px;
         text-align:center;
         margin-top:24px;
     ">
 
         <div style="
-            font-size:42px;
-            margin-bottom:10px;
+            font-size:45px;
+            margin-bottom:12px;
         ">
             🧹
         </div>
 
         <div style="
-            font-size:21px;
+            font-size:22px;
             font-weight:800;
             color:#111827;
         ">
@@ -1750,11 +1861,6 @@ if (
     """
 
     st.html(inicial_html)
-
-
-# ============================================================
-# RESULTADO
-# ============================================================
 
 else:
 
@@ -1796,14 +1902,11 @@ else:
 
 
     # ========================================================
-    # 3 CARDS
+    # CONSTRUIR CARDS
     # ========================================================
 
     html = """
     <div class="cards-wrapper">
-
-
-        <!-- VERDE -->
 
         <div class="status-card green-card">
 
@@ -1822,7 +1925,7 @@ else:
 
 
     # ========================================================
-    # CARD VERDE
+    # VERDE
     # ========================================================
 
     if checkins_com_limpeza:
@@ -1857,41 +1960,38 @@ else:
                 )
 
             html += f"""
-            <div class="apt-row">
+                <div class="apt-row">
 
-                <div class="apt-left">
+                    <div class="apt-left">
 
-                    <div class="small-icon green-small">
-                        ✓
+                        <div class="small-icon green-small">
+                            ✓
+                        </div>
+
+                        <div class="apt-code">
+                            {codigo_exibicao}
+                        </div>
+
                     </div>
 
-                    <div class="apt-code">
-                        {codigo_exibicao}
+                    <div class="apt-description">
+                        {descricao}
                     </div>
 
                 </div>
-
-                <div class="apt-description">
-                    {descricao}
-                </div>
-
-            </div>
             """
 
     else:
 
         html += """
-        <div class="empty-card">
-            Nenhum apartamento
-        </div>
+            <div class="empty-card">
+                Nenhum apartamento
+            </div>
         """
 
 
     html += """
         </div>
-
-
-        <!-- AZUL -->
 
         <div class="status-card blue-card">
 
@@ -1902,7 +2002,7 @@ else:
                 </div>
 
                 <div class="status-title">
-                    Limpezas + sem check-in
+                    Hoje + sem check-in
                 </div>
 
             </div>
@@ -1910,7 +2010,7 @@ else:
 
 
     # ========================================================
-    # CARD AZUL
+    # AZUL
     # ========================================================
 
     if limpezas_sem_checkin:
@@ -1920,37 +2020,34 @@ else:
         ):
 
             html += f"""
-            <div class="apt-row">
+                <div class="apt-row">
 
-                <div class="apt-left">
+                    <div class="apt-left">
 
-                    <div class="small-icon blue-small">
-                        ✓
-                    </div>
+                        <div class="small-icon blue-small">
+                            ✓
+                        </div>
 
-                    <div class="apt-code">
-                        {codigo}
+                        <div class="apt-code">
+                            {codigo}
+                        </div>
+
                     </div>
 
                 </div>
-
-            </div>
             """
 
     else:
 
         html += """
-        <div class="empty-card">
-            Nenhum apartamento
-        </div>
+            <div class="empty-card">
+                Nenhum apartamento
+            </div>
         """
 
 
     html += """
         </div>
-
-
-        <!-- VERMELHO -->
 
         <div class="status-card red-card">
 
@@ -1969,7 +2066,7 @@ else:
 
 
     # ========================================================
-    # CARD VERMELHO
+    # VERMELHO
     # ========================================================
 
     if checkins_sem_limpeza:
@@ -2015,33 +2112,33 @@ else:
                 )
 
             html += f"""
-            <div class="apt-row">
+                <div class="apt-row">
 
-                <div class="apt-left">
+                    <div class="apt-left">
 
-                    <div class="small-icon red-small">
-                        !
+                        <div class="small-icon red-small">
+                            !
+                        </div>
+
+                        <div class="apt-code">
+                            {codigo_exibicao}
+                        </div>
+
                     </div>
 
-                    <div class="apt-code">
-                        {codigo_exibicao}
+                    <div class="apt-description">
+                        {data_texto}
                     </div>
 
                 </div>
-
-                <div class="apt-description">
-                    {data_texto}
-                </div>
-
-            </div>
             """
 
     else:
 
         html += """
-        <div class="empty-card">
-            Nenhum apartamento
-        </div>
+            <div class="empty-card">
+                Nenhum apartamento
+            </div>
         """
 
 
@@ -2051,6 +2148,10 @@ else:
     </div>
     """
 
+
+    # ========================================================
+    # RENDERIZAÇÃO CORRETA
+    # ========================================================
 
     st.html(html)
 
@@ -2074,13 +2175,9 @@ else:
 
         footer_html = f"""
         <div class="footer">
-
             Última verificação: {horario}
-
             &nbsp; • &nbsp;
-
             TAMU — Conferência de Operações
-
         </div>
         """
 

@@ -1386,12 +1386,36 @@ st.markdown(
 
 
 # ============================================================
-# BOTÃO
+# BOTÕES DE NAVEGAÇÃO E CONFERÊNCIA
 # ============================================================
 
-if st.button(
-    "🔍 CONFERIR LIBERAÇÕES DO DIA"
-):
+# Botão de voltar permanece à esquerda, logo abaixo do HERO.
+col_voltar, _ = st.columns([1, 4])
+
+with col_voltar:
+
+    if st.button(
+        "← VOLTAR À CONFERÊNCIA",
+        key="voltar_conferencia"
+    ):
+
+        st.switch_page(
+            "app.py"
+        )
+
+
+# Botão principal centralizado na página.
+_, col_conferir, _ = st.columns([1, 1.35, 1])
+
+with col_conferir:
+
+    iniciar_conferencia = st.button(
+        "🔍 CONFERIR LIBERAÇÕES DO DIA",
+        key="conferir_liberacoes"
+    )
+
+
+if iniciar_conferencia:
 
     try:
 

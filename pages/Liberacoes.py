@@ -1071,9 +1071,6 @@ def buscar_liberacoes_hoje():
                 ")"
             ),
 
-        "status":
-            "eq.active",
-
         "checkin_date":
             f"eq.{hoje}",
 
@@ -1098,7 +1095,37 @@ def buscar_liberacoes_hoje():
             f"{resposta.text}"
         )
 
-    return resposta.json()
+    reservas = resposta.json()
+
+    # ========================================================
+    # FILTRAR SOMENTE RESERVAS NÃO CANCELADAS
+    # ========================================================
+
+    reservas_validas = []
+
+    for reserva in reservas:
+
+        status = str(
+            reserva.get(
+                "status",
+                ""
+            )
+        ).strip().lower()
+
+        # Reserva cancelada não deve ser considerada
+        if status in (
+            "cancelled",
+            "canceled",
+            "cancelada",
+            "cancelado"
+        ):
+            continue
+
+        reservas_validas.append(
+            reserva
+        )
+
+    return reservas_validas
 
 
 # ============================================================

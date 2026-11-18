@@ -1782,9 +1782,30 @@ if not GITHUB_ACTIONS_TOKEN:
 if atualizar_token:
     try:
         solicitar_atualizacao_manual_token()
-        st.success(
-            "Solicitação enviada ao GitHub Actions. "
-            "Aguarde alguns minutos e confira a execução antes de fazer a verificação."
+        st.markdown(
+            """
+            <div style="
+                max-width:570px;
+                margin:14px auto 22px auto;
+                padding:14px 18px;
+                border:1px solid #22c55e;
+                border-left:6px solid #16a34a;
+                border-radius:12px;
+                background:#dcfce7;
+                color:#166534;
+                text-align:center;
+                font-size:14px;
+                font-weight:700;
+                line-height:1.5;
+                box-shadow:0 6px 18px rgba(22,163,74,0.12);
+            ">
+                ✅ Solicitação enviada ao GitHub Actions!
+                <div style="font-size:13px; font-weight:500; margin-top:4px;">
+                    Aguarde alguns minutos e confira a execução antes de fazer a verificação.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
     except Exception as erro:
         st.error(f"Não foi possível iniciar a atualização: {erro}")

@@ -20,6 +20,9 @@ SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
 # Mantido como fallback para a primeira configuração, caso ainda não exista token remoto.
 SUPABASE_REFRESH_TOKEN = st.secrets.get("SUPABASE_REFRESH_TOKEN", "")
 TAMU_INTEGRATION_KEY = st.secrets.get("TAMU_INTEGRATION_KEY", "")
+GITHUB_ACTIONS_TOKEN = st.secrets.get("GITHUB_ACTIONS_TOKEN", "")
+GITHUB_REPOSITORY = "tamuatendendo-ctrl/tamu-conferencia"
+GITHUB_WORKFLOW_FILE = "refresh_morada_token.yml"
 
 
 # ============================================================
@@ -700,6 +703,49 @@ def salvar_refresh_token_remoto(refresh_token):
     dados = resposta.json()
     if not dados.get("sucesso"):
         raise Exception("Não foi possível atualizar o refresh token remoto.")
+
+
+def solicitar_atualizacao_manual_token():
+    """Dispara o workflow de renovação do token no GitHub Actions."""
+    if not GITHUB_ACTIONS_TOKEN:
+        raise Exception(
+            "A integração ainda não foi configurada. "
+            "Adicione GITHUB_ACTIONS_TOKEN aos Secrets do Streamlit."
+        )
+
+    url = (
+        f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
+        f"/actions/workflows/{GITHUB_WORKFLOW_FILE}/dispatches"
+    )
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GITHUB_ACTIONS_TOKEN}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    resposta = requests.post(
+        url,
+        headers=headers,
+        json={"ref": "main"},
+        timeout=30,
+    )
+
+    if resposta.status_code == 204:
+        return True
+
+    if resposta.status_code in (401, 403):
+        raise Exception(
+            "O GitHub recusou a solicitação. Verifique se o token "
+            "tem permissão Actions: Read and write no repositório."
+        )
+
+    if resposta.status_code == 404:
+        raise Exception(
+            "Workflow não encontrado ou token sem acesso ao repositório."
+        )
+
+    raise Exception(
+        f"GitHub retornou HTTP {resposta.status_code} ao solicitar a atualização."
+    )
 
 
 def renovar_token_supabase():
@@ -1691,6 +1737,43 @@ with col_botao:
         "🔄  FAZER VERIFICAÇÃO",
         use_container_width=True
     )
+
+
+# ============================================================
+# ATUALIZAÇÃO MANUAL DO TOKEN
+# ============================================================
+
+st.markdown("### 🔐 Atualização do token de acesso")
+st.caption("Renovação extraordinária do token do painel Morada Carioca, sem precisar abrir o GitHub.")
+
+if not GITHUB_ACTIONS_TOKEN:
+    st.info(
+        "Para habilitar este botão, falta cadastrar o Secret "
+        "`GITHUB_ACTIONS_TOKEN` nas configurações do Streamlit."
+    )
+
+col_token, col_token_info = st.columns([1.2, 2])
+
+with col_token:
+    atualizar_token = st.button(
+        "🔄  ATUALIZAR TOKEN AGORA",
+        use_container_width=True,
+        disabled=not bool(GITHUB_ACTIONS_TOKEN),
+        key="btn_atualizar_token_manual",
+    )
+
+with col_token_info:
+    st.caption("O processo é executado pelo GitHub Actions e pode levar alguns minutos.")
+
+if atualizar_token:
+    try:
+        solicitar_atualizacao_manual_token()
+        st.success(
+            "Solicitação enviada ao GitHub Actions. "
+            "Aguarde alguns minutos e confira a execução antes de fazer a verificação."
+        )
+    except Exception as erro:
+        st.error(f"Não foi possível iniciar a atualização: {erro}")
 
 
 # ============================================================

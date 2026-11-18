@@ -1743,16 +1743,23 @@ with col_botao:
 # ATUALIZAÇÃO MANUAL DO TOKEN
 # ============================================================
 
-st.markdown("### 🔐 Atualização do token de acesso")
-st.caption("Renovação extraordinária do token do painel Morada Carioca, sem precisar abrir o GitHub.")
+st.markdown(
+    """
+    <div style="text-align:center; margin: 24px 0 6px 0;">
+        <div style="color:#1d4ed8; font-size:22px; font-weight:800;">
+            🔐 Atualização do token de acesso
+        </div>
+        <div style="color:#64748b; font-size:14px; margin-top:7px;">
+            Renovação extraordinária do token do painel Morada Carioca, sem precisar abrir o GitHub.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-if not GITHUB_ACTIONS_TOKEN:
-    st.info(
-        "Para habilitar este botão, falta cadastrar o Secret "
-        "`GITHUB_ACTIONS_TOKEN` nas configurações do Streamlit."
-    )
-
-col_token, col_token_info = st.columns([1.2, 2])
+# Repete a mesma grade do botão "FAZER VERIFICAÇÃO" para manter
+# os dois botões centralizados e com a mesma largura.
+col_token_esq, col_token, col_token_dir = st.columns([1, 1.2, 1])
 
 with col_token:
     atualizar_token = st.button(
@@ -1762,8 +1769,15 @@ with col_token:
         key="btn_atualizar_token_manual",
     )
 
-with col_token_info:
-    st.caption("O processo é executado pelo GitHub Actions e pode levar alguns minutos.")
+    st.caption(
+        "O processo é executado pelo GitHub Actions e pode levar alguns minutos."
+    )
+
+if not GITHUB_ACTIONS_TOKEN:
+    st.warning(
+        "Para habilitar este botão, cadastre o Secret "
+        "`GITHUB_ACTIONS_TOKEN` nas configurações do Streamlit."
+    )
 
 if atualizar_token:
     try:

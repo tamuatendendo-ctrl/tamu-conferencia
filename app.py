@@ -17,7 +17,9 @@ import streamlit as st
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
-SUPABASE_REFRESH_TOKEN = st.secrets["SUPABASE_REFRESH_TOKEN"]
+# Mantido como fallback para a primeira configuração, caso ainda não exista token remoto.
+SUPABASE_REFRESH_TOKEN = st.secrets.get("SUPABASE_REFRESH_TOKEN", "")
+TAMU_INTEGRATION_KEY = st.secrets.get("TAMU_INTEGRATION_KEY", "")
 
 
 # ============================================================
@@ -663,6 +665,43 @@ def salvar_token_supabase(
         )
 
 
+def obter_refresh_token_remoto():
+    """Busca o refresh token mais recente armazenado no Apps Script."""
+    if not TAMU_INTEGRATION_KEY:
+        return None
+
+    resposta = requests.post(
+        APP_SCRIPT_URL,
+        json={"action": "get_token", "api_key": TAMU_INTEGRATION_KEY},
+        timeout=30
+    )
+    resposta.raise_for_status()
+    dados = resposta.json()
+    if not dados.get("sucesso"):
+        return None
+    return dados.get("refresh_token")
+
+
+def salvar_refresh_token_remoto(refresh_token):
+    """Persiste no Apps Script o refresh token rotacionado pelo Supabase."""
+    if not TAMU_INTEGRATION_KEY or not refresh_token:
+        return
+
+    resposta = requests.post(
+        APP_SCRIPT_URL,
+        json={
+            "action": "save_token",
+            "api_key": TAMU_INTEGRATION_KEY,
+            "refresh_token": refresh_token
+        },
+        timeout=30
+    )
+    resposta.raise_for_status()
+    dados = resposta.json()
+    if not dados.get("sucesso"):
+        raise Exception("Não foi possível atualizar o refresh token remoto.")
+
+
 def renovar_token_supabase():
 
     url = (
@@ -672,111 +711,54 @@ def renovar_token_supabase():
     )
 
     headers = {
-
-        "apikey":
-            SUPABASE_ANON_KEY,
-
-        "Content-Type":
-            "application/json"
+        "apikey": SUPABASE_ANON_KEY,
+        "Content-Type": "application/json"
     }
 
-    # Usa sempre o refresh token mais recente salvo localmente.
-    # Isso evita o erro refresh_token_already_used quando o Supabase
-    # faz rotação do refresh token após uma renovação.
-    refresh_token = None
+    # O Apps Script é a fonte prioritária compartilhada com a automação diária.
+    refresh_token = obter_refresh_token_remoto()
 
-    if os.path.exists(
-        ARQUIVO_TOKEN_SUPABASE
-    ):
-
+    # Fallbacks para a migração inicial ou indisponibilidade do armazenamento remoto.
+    if not refresh_token and os.path.exists(ARQUIVO_TOKEN_SUPABASE):
         try:
-
-            with open(
-                ARQUIVO_TOKEN_SUPABASE,
-                "r",
-                encoding="utf-8"
-            ) as arquivo:
-
-                dados_token = json.load(
-                    arquivo
-                )
-
-            refresh_token = dados_token.get(
-                "refresh_token"
-            )
-
+            with open(ARQUIVO_TOKEN_SUPABASE, "r", encoding="utf-8") as arquivo:
+                dados_token = json.load(arquivo)
+            refresh_token = dados_token.get("refresh_token")
         except Exception:
-
             refresh_token = None
 
-    # Primeira execução: utiliza o token original do config.py.
     if not refresh_token:
+        refresh_token = SUPABASE_REFRESH_TOKEN
 
-        refresh_token = (
-            SUPABASE_REFRESH_TOKEN
-        )
-
-    payload = {
-
-        "refresh_token":
-            refresh_token
-    }
+    if not refresh_token:
+        raise Exception("Nenhum refresh token disponível no Apps Script, arquivo local ou Secrets.")
 
     resposta = requests.post(
-
         url,
-
         headers=headers,
-
-        json=payload,
-
+        json={"refresh_token": refresh_token},
         timeout=30
     )
 
     if resposta.status_code != 200:
-
         raise Exception(
-            "Não foi possível renovar "
-            "a sessão do Supabase.\n\n"
-            f"HTTP {resposta.status_code}\n"
-            f"{resposta.text}"
+            "Não foi possível renovar a sessão do Supabase.\n\n"
+            f"HTTP {resposta.status_code}\n{resposta.text}"
         )
 
     dados = resposta.json()
-
-    access_token = dados.get(
-        "access_token"
-    )
-
-    novo_refresh_token = dados.get(
-        "refresh_token"
-    )
-
-    expires_in = dados.get(
-        "expires_in"
-    )
+    access_token = dados.get("access_token")
+    novo_refresh_token = dados.get("refresh_token") or refresh_token
+    expires_in = dados.get("expires_in")
 
     if not access_token:
+        raise Exception("Supabase não retornou um access token.")
 
-        raise Exception(
-            "Supabase não retornou "
-            "um access token."
-        )
-
-    # Se o Supabase não retornar outro refresh token,
-    # preserva o atual para a próxima renovação.
-    if not novo_refresh_token:
-
-        novo_refresh_token = refresh_token
-
-    salvar_token_supabase(
-        access_token,
-        novo_refresh_token,
-        expires_in
-    )
+    # Atualiza o armazenamento compartilhado e mantém uma cópia local de contingência.
+    salvar_refresh_token_remoto(novo_refresh_token)
+    salvar_token_supabase(access_token, novo_refresh_token, expires_in)
 
     return access_token
-
 
 def obter_access_token_supabase():
 

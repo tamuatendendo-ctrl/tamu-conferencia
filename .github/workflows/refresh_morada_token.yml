@@ -3,8 +3,8 @@ name: Atualizar refresh token Supabase Morada Carioca
 on:
   workflow_dispatch:
   schedule:
-    # 06:00 no horário de Brasília (09:00 UTC)
-    - cron: "0 9 * * *"
+    # 09:00 no horário de Brasília (12:00 UTC)
+    - cron: "0 12 * * *"
 
 permissions:
   contents: read
